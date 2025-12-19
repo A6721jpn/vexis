@@ -1,6 +1,6 @@
-# Proto3 Development Guide
+# VEXIS Development Guide
 
-**Version:** 3.0 (Clean Baseline)  
+**Version:** 0.4 (Proto4)  
 **Date:** 2025-12-18
 
 This document describes the architecture, implementation details, and design philosophy of the **Proto3** Automated Analysis System. It is intended for development engineers to quickly understand the codebase and perform modifications.
