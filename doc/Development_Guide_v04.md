@@ -55,8 +55,7 @@ Proto2/
 ### 3.2. Helpers (`analysis_helpers.py`)
 *   **Role**: Bridge between Python and External Tools.
 *   **Key Implementations**:
-    *   **`run_meshing`**: Executes `src.mesh_gen.main` in a **Subprocess**.
-        *   *Reason*: Gmsh (C++ library) outputs noise that conflicts with Python's `tqdm` progress bar. Subprocessing isolates this into `workflow_detailed.log`.
+        *   *Reason*: Gmsh (C++ library) outputs noise that conflicts with Python's `tqdm` progress bar. Subprocessing isolates this into `temp/workflow_detailed.log`.
     *   **`run_solver_and_extract`**: Runs FEBio (`febio4.exe`).
         *   Uses `subprocess.Popen` with `shell=False` and `bufsize=1` (Line Buffered) for **Real-Time Log Streaming**.
         *   **Parser**: regex-matches `time=` or `time =` to update the progress bar incrementally.

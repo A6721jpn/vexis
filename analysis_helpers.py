@@ -23,7 +23,7 @@ from src.mesh_swap.result_analysis.extract_results import process_log
 
 # Determine global log path (could be passed in, but hardcoding relative to helper for now)
 # Assuming run from Proto2/
-GLOBAL_LOG_PATH = "workflow_detailed.log"
+GLOBAL_LOG_PATH = "temp/workflow_detailed.log"
 
 @contextlib.contextmanager
 def redirect_output_to_file(log_path=GLOBAL_LOG_PATH):
