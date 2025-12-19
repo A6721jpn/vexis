@@ -1,0 +1,32 @@
+# =================================================
+# VEXIS-CAE v0.4 (Proto4) Simulation Configuration
+# =================================================
+
+mesh:
+  # Mesh Generation Parameters (FElupe/Gmsh)
+  revolve_axis: 2          # 0=X, 1=Y, 2=Z (Default: 2)
+  revolve_angle: 90        # Degrees, normally 90 for quarter symmetry
+  revolve_layers: 14       # Number of elements in circumferential direction
+  mesh_size: 0.3           # Global mesh size target (mm)
+  mesh_dimension: 2        # Element Order: 1=Linear(Hex8), 2=Quadratic(Hex20)
+  output_format: "inp"     # Output format for intermediate mesh
+  
+  # Adaptive Meshing (Structured Core)
+  ogrid_core_ratio: 0.12   # Radius ratio for the central structured core
+  core_inner_ratio: 0.55   # Internal parameter for O-grid mapping
+  core_radial_layers: 3    # Number of radial element layers in the core
+  radial_mapping_beta: 1.0 # Mesh density distribution parameter
+
+analysis:
+  # FEBio Solver Simulation Settings
+  febio_path: "C:\\Program Files\\FEBioStudio\\bin\\febio4.exe"
+  template_feb: "template2.feb"
+  material_name: "Ogden_Rubber_v1" # Reference to material.yaml
+  total_stroke: 1.0        # Total depression distance (mm). 
+  time_steps: 45           # Number of simulation steps (Default: 20, Full-Push: 50, Push-Return: 100)
+  num_threads:           # Number of CPU threads for solver (Leave empty for full power)
+
+# ========================================================================
+#   Copyright (C) 2025 Akihisa Okuni
+#   VAXIS-CAE is free software under the terms of the GNU GPL v3 or later
+# ========================================================================

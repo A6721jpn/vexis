@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>VEXIS (Antigravity) Proto シリーズ リリースノート</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 20px auto; padding: 0 20px; }
+        h1 { border-bottom: 2px solid #0052CC; color: #0052CC; padding-bottom: 10px; }
+        h2 { border-bottom: 1px solid #DFE1E6; color: #172B4D; margin-top: 30px; }
+        ul { padding-left: 20px; }
+        li { margin-bottom: 5px; }
+        .version-block { margin-bottom: 40px; }
+        b { color: #172B4D; }
+    </style>
+</head>
+<body>
+
+<h1>リリースノート: VEXIS (Antigravity) Proto シリーズ</h1>
+<p>本ドキュメントでは、自動解析ワークフローシステム「VEXIS (Protoシリーズ)」の各バージョンの変遷と主要な変更点を記録しています。</p>
+
+<div class="version-block">
+    <h2>Proto1 (初期自動化プロトタイプ)</h2>
+    <p>自動解析の実現可能性を検証するための最初のバージョンです。</p>
+    <ul>
+        <li><b>主要機能:</b>
+            <ul>
+                <li>STEPファイルの自動読み込みとメッシュ生成のバッチ処理。</li>
+                <li>FEBio解析の自動実行。</li>
+                <li>解析結果（力-変位データ）の自動抽出とグラフ化。</li>
+            </ul>
+        </li>
+        <li><b>技術的特徴:</b>
+            <ul>
+                <li>プロジェクトルートの設定ファイルを直接参照する最小構成。</li>
+            </ul>
+        </li>
+    </ul>
+</div>
+
+<div class="version-block">
+    <h2>Proto2 (ワークフローの構造化とUI改善)</h2>
+    <p>解析ワークフローを独立したパッケージとして整理し、実用性を高めたバージョンです。</p>
+    <ul>
+        <li><b>主要機能:</b>
+            <ul>
+                <li><code>tqdm</code> によるプログレスバーの導入（メッシュ生成、解析、ソルバーの進捗を視覚化）。</li>
+                <li>ディレクトリ構造の整理（<code>input</code>, <code>temp</code>, <code>results</code>, <code>settings</code>）。</li>
+                <li>解析中断機能（Ctrl+C）の堅牢化。</li>
+            </ul>
+        </li>
+        <li><b>技術的特徴:</b>
+            <ul>
+                <li><code>analysis_helpers.py</code> による処理のモジュール化。</li>
+            </ul>
+        </li>
+    </ul>
+</div>
+
+<div class="version-block">
+    <h2>Proto3 (柔軟な設定機能の導入)</h2>
+    <p>解析パラメータを外部設定ファイルから動的に変更可能にしたバージョンです。</p>
+    <ul>
+        <li><b>主要機能:</b>
+            <ul>
+                <li><code>config.yaml</code> による一元管理。</li>
+                <li>パラメータオーバーライド（押し込み量、ステップ数、材料名等）のサポート。</li>
+                <li>解析失敗時のエラーハンドリングとカラー表示の導入。</li>
+            </ul>
+        </li>
+        <li><b>技術的特徴:</b>
+            <ul>
+                <li>YAMLベースのコンフィギュレーションエンジンの導入。</li>
+            </ul>
+        </li>
+    </ul>
+</div>
+
+<div class="version-block">
+    <h2>Proto4 (高度なメッシュ生成とシステム外部化)</h2>
+    <p>メッシュ品質の向上と、異なる実行環境への対応を強化した最新バージョンです。</p>
+    <ul>
+        <li><b>主要機能:</b>
+            <ul>
+                <li><b>バタフライメッシュ(O-Grid)生成:</b> 中心部を構造格子（正方形ブロック）にすることで、特異点を回避し高品質なメッシュを実現。</li>
+                <li><b>ソルバー制御:</b> 並列計算スレッド数（CPUスレッド数）の指定が可能に。</li>
+                <li><b>パスの完全外部化:</b> FEBioの実行パスやテンプレートファイルを <code>config.yaml</code> で定義可能にし、環境依存性を排除。</li>
+            </ul>
+        </li>
+        <li><b>技術的特徴:</b>
+            <ul>
+                <li>独自アルゴリズムによる高度なメッシュ生成ロジックの実装。</li>
+                <li>コンフィギュレーションの集約（外部 <code>.config</code> ファイルの廃止と <code>config.yaml</code> への統合）。</li>
+            </ul>
+        </li>
+    </ul>
+</div>
+
+</body>
+</html>
