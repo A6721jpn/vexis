@@ -180,6 +180,46 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
     last_refresh_time = time.time()
     
     try:
+        with open(log_file, "w") as f_log:
+            # bufsize=1 means line buffered
+            proc = subprocess.Popen(cmd, env=env, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            
+            # Iterate over stdout line by line as they arrive
+            for line in proc.stdout:
+                f_log.write(line) 
+                
+                # Update Progress Bar based on 'time = X' or 'time=X'
+                if "time" in line:
+                    # Match "time = 0.1" or "time=0.1", case-insensitive
+                    match = re.search(r"time\s*=\s*([\d\.eE\+\-]+)", line, re.IGNORECASE)
+                    if match:
+                        try:
+                            current_time = float(match.group(1))
+                            solver_bar.n = current_time
+                            solver_bar.last_print_n = current_time
+                            solver_bar.refresh()
+                            last_refresh_time = time.time()
+                        except ValueError:
+                            pass
+                
+                # Periodic forced refresh (every 2.0s)
+                if time.time() - last_refresh_time > 2.0:
+                    solver_bar.refresh()
+                    last_refresh_time = time.time()
+                
+                # Check for 's' key skip (Windows only)
+                if msvcrt.kbhit():
+                    key = msvcrt.getch()
+                    try:
+                        key_char = key.decode().lower()
+                    except:
+                        key_char = ""
+                    
+                    if key_char == 's':
+                        tqdm.write(f"\n  >>> 's' key pressed: Skipping current job ({base_name})...")
+                        proc.kill()
+                        raise KeyboardInterrupt("SkipJob")
+
         proc.wait() 
         if proc.returncode != 0:
             tqdm.write(f"\n! Solver crashed with exit code {proc.returncode}")

@@ -19,6 +19,16 @@ def main():
 
     steps = glob.glob(os.path.join(INPUT_DIR, "*.stp")) + glob.glob(os.path.join(INPUT_DIR, "*.step"))
     
+    print(f"")
+    print(r"     /##\            /##" + "\\")
+    print(r"    /#__#\          /#__#" + "\\")
+    print(r"    |#::#|          |#::#|")
+    print(r"     \#::#\        /#::#/")
+    print(r"      \#::#\      /#::#/")
+    print(r"       \#::#\    /#::#/")
+    print(r"        \#::#\__/#::#/")
+    print(r"         \##########/")
+    print(f"")
     print(f"--- Auto Analysis Workflow (VEXIS-CAE) ---")
     print(f"Target Files: {len(steps)} | Mode: {'Mesh-Only' if args.mesh_only else 'Skip-Mesh' if args.skip_mesh else 'Full'}")
     print(f"Controls: [s] = Skip current job, [Ctrl+C] = Stop all")
