@@ -34,6 +34,7 @@ Thumbs.db
 # --- FEBio auto-generated folders ---
 job/
 results/
+temp/
 
 # --- Visualization / post files ---
 *.vtk
