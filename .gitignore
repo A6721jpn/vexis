@@ -1,0 +1,141 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors/IDEs
+.vscode/
+.idea/
+
+# =========================================================
+# FEBio (Finite Elements for Biomechanics)
+# =========================================================
+
+# --- Solver input ---
+*.feb
+*.fs2
+
+
+# --- Solver output / results ---
+*.xplt
+*.plt
+*.log
+*.out
+*.err
+*.csv
+
+# --- Restart / dump files ---
+*.dmp
+*.restart
+
+# --- FEBio Studio temp / cache ---
+*.febio
+*.tmp
+
+# --- FEBio auto-generated folders ---
+job/
+
+# --- Visualization / post files ---
+*.vtk
+*.vtu
+*.pvtu
+*.exo
+*.e
+
+# --- Mesh exports ---
+*.msh
+*.mesh
+*.bdf
+*.inp
+
+
+# =========================================================
+# CATIA V5 (ignore all CATIA deliverables / artifacts)
+# =========================================================
+
+# Main CATIA V5 document types
+*.CATPart
+*.CATProduct
+*.CATDrawing
+*.CATAnalysis
+*.CATProcess
+*.CATMaterial
+*.CATShape
+*.CATfct
+*.CATNls
+
+# Export / interchange that often accompanies CATIA workflows (optional)
+*.cgr
+*.3dxml
+*.stp
+*.step
+*.igs
+*.iges
+
+# CATIA caches / temp / lock files (names vary by environment)
+*.tmp
+*.bak
+*.lck
+*.lock
+
+
+
+# =========================================================
+# Python project .gitignore (with virtualenv)
+# =========================================================
+
+# --- Virtual environments ---
+.venv/
+venv/
+ENV/
+env/
+.conda/
+.uv/
+.python-version
+
+# --- Python bytecode / cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Packaging / build artifacts ---
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# --- Test / coverage ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Type check / lint ---
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+# --- Logs / temp ---
+*.log
+*.tmp
+*.swp
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+
+# --- IDEs/editors ---
+.vscode/
+.idea/
+
+# --- Secrets (keep out of git) ---
+.env
+.env.*
+*.pem
+*.key
