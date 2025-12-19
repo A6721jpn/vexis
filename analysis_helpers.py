@@ -7,17 +7,7 @@ import lxml.etree as ET
 import time
 from tqdm import tqdm
 
-from src.mesh_gen.main import generate_adaptive_mesh
-from src.mesh_swap.mesh_replacer import load_reference, replace_mesh, save_file
-from src.mesh_swap.result_analysis.extract_results import process_log
-
-# Determine global log path (could be passed in, but hardcoding relative to helper for now)
-# Assuming run from Proto2/
-from tqdm import tqdm
-
-# We don't import generate_adaptive_mesh here anymore to avoid importing Gmsh in main process
-# from src.mesh_gen.main import generate_adaptive_mesh
-# from src.mesh_gen.main import generate_adaptive_mesh
+# Helper modules
 from src.mesh_swap.mesh_replacer import load_reference, replace_mesh, save_file, adjust_keycap_height, override_rigid_bc, override_control_params
 from src.mesh_swap.result_analysis.extract_results import process_log
 
@@ -190,105 +180,53 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
     last_refresh_time = time.time()
     
     try:
-        with open(log_file, "w") as f_log:
-            # bufsize=1 means line buffered
-            proc = subprocess.Popen(cmd, env=env, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-            
-            # Iterate over stdout line by line as they arrive
-            for line in proc.stdout:
-                f_log.write(line) 
-                
-                # Update Progress Bar based on 'time = X' or 'time=X'
-                if "time" in line:
-                    # Match "time = 0.1" or "time=0.1", case-insensitive
-                    match = re.search(r"time\s*=\s*([\d\.eE\+\-]+)", line, re.IGNORECASE)
-                    if match:
-                        try:
-                            current_time = float(match.group(1))
-                            solver_bar.n = current_time
-                            solver_bar.last_print_n = current_time
-                            solver_bar.refresh()
-                            last_refresh_time = time.time()
-                        except ValueError:
-                            pass
-                
-                # Periodic forced refresh (every 2.0s)
-                if time.time() - last_refresh_time > 2.0:
-                    solver_bar.refresh()
-                    last_refresh_time = time.time()
-                
-                # Check for 's' key skip (Windows only)
-                if msvcrt.kbhit():
-                    key = msvcrt.getch()
-                    try:
-                        key_char = key.decode().lower()
-                    except:
-                        key_char = ""
-                    
-                    if key_char == 's':
-                        tqdm.write(f"\n  >>> 's' key pressed: Skipping current job ({base_name})...")
-                        proc.kill()
-                        raise KeyboardInterrupt("SkipJob")
-
         proc.wait() 
-        
-    except KeyboardInterrupt as e:
-        if str(e) == "SkipJob":
-            pass
-        else:
-            if proc: proc.kill()
-            solver_bar.close()
-            raise e
+        if proc.returncode != 0:
+            tqdm.write(f"\n! Solver crashed with exit code {proc.returncode}")
+            return False
             
+    except KeyboardInterrupt as e:
+        if proc: proc.kill()
+        solver_bar.close()
+        if str(e) != "SkipJob": raise e
+        return False
     finally:
         solver_bar.close()
 
     
     # 2. Extract Results
-    # Give the OS a moment to release file handles after solver exit
     time.sleep(1.0) 
+    if not os.path.exists(log_file): return False
+
+    with open(log_file, "r") as f:
+        log_content = f.read()
+    
+    is_converged = "Normal termination" in log_content or "N O R M A L   T E R M I N A T I O N" in log_content
+    if not is_converged:
+        tqdm.write(f"  ! Solver did not converge for {base_name}. Skipping result extraction.")
+        return False
 
     with redirect_output_to_file():
-        is_converged = False
-        if os.path.exists(log_file):
-            with open(log_file, "r") as f:
-                log_content = f.read()
-                # Check for standard and FEBio spaced format
-                if "Normal termination" in log_content or "N O R M A L   T E R M I N A T I O N" in log_content:
-                    is_converged = True
-        
-        src_data = os.path.join(os.path.dirname(feb_path), "rigid_body_data.txt")
-        dst_data = os.path.join(result_dir, f"{base_name}_data.txt")
-        
-        if os.path.exists(src_data):
-            # Retry loop for file move (Windows file locking issue)
-            for attempt in range(5):
+        src_dir = os.path.dirname(feb_path)
+        # Helper for file rotation/movement with retries
+        def safe_move(src, dst):
+            if not os.path.exists(src): return
+            for i in range(5):
                 try:
-                    if os.path.exists(dst_data): 
-                        os.remove(dst_data)
-                    os.rename(src_data, dst_data)
-                    break 
-                except OSError as e:
-                    if attempt < 4:
-                        print(f"  [Retry {attempt+1}/5] Waiting for file release... ({src_data})")
-                        time.sleep(1.0 + attempt)
-                    else:
-                        print(f"  ! Failed to move data file after retries: {e}")
-                        raise e
+                    if os.path.exists(dst): os.remove(dst)
+                    os.rename(src, dst)
+                    return
+                except OSError: time.sleep(1.0 + i)
+            tqdm.write(f"  ! Failed to move {os.path.basename(src)}")
 
-            process_log(dst_data, result_dir)
-        
-        src_csv = os.path.join(result_dir, "force_displacement.csv")
-        dst_csv = os.path.join(result_dir, f"{base_name}_result.csv")
-        if os.path.exists(src_csv):
-            if os.path.exists(dst_csv): os.remove(dst_csv)
-            os.rename(src_csv, dst_csv)
-            
-        src_png = os.path.join(result_dir, "force_displacement.png")
-        dst_png = os.path.join(result_dir, f"{base_name}_graph.png")
-        if os.path.exists(src_png):
-            if os.path.exists(dst_png): os.remove(dst_png)
-            os.rename(src_png, dst_png)
+        safe_move(os.path.join(src_dir, "rigid_body_data.txt"), os.path.join(result_dir, f"{base_name}_data.txt"))
+        data_path = os.path.join(result_dir, f"{base_name}_data.txt")
+        if os.path.exists(data_path):
+            process_log(data_path, result_dir)
+            safe_move(os.path.join(result_dir, "force_displacement.csv"), os.path.join(result_dir, f"{base_name}_result.csv"))
+            safe_move(os.path.join(result_dir, "force_displacement.png"), os.path.join(result_dir, f"{base_name}_graph.png"))
+
+    return True
 
 def update_material_params(tree, material_name, yaml_path):
     """
