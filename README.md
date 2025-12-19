@@ -1,11 +1,8 @@
 # VEXIS CAE
-
+![Force-Stroke Graph Example](doc/VEXIS-CAE-LOGO-LARGE.png)
 VEXIS CAE is an automated Finite Element Analysis (FEA) pipeline designed for large-deformation and buckling simulations of rubber dome, typically for membrane keyboard. It streamlines the workflow from raw CAD models(.step) to analyzed simulation results.
 
 This software is licensed under the [GNU GPL v3](LICENSE).
-
-![Force-Stroke Graph Example](doc/VEXIS-CAE-LOGO-LARGE.png)
-*Example of Force-Stroke analysis result.*
 
 ## Key Features
 
