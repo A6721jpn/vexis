@@ -4,14 +4,22 @@ import time
 from tqdm import tqdm
 import analysis_helpers as helpers
 
-# Paths relative to VEXIS-CAE/
-# Default paths relative to VEXIS-CAE  /
-INPUT_DIR = "input"
-CONFIG_DIR = "config"
-TEMP_DIR = "temp"
-RESULT_DIR = "results"
+# Paths relative to the executable or script location
+if getattr(sys, 'frozen', False):
+    # Running as compiled EXE
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # Running as Python script
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+INPUT_DIR = os.path.join(BASE_DIR, "input")
+CONFIG_DIR = os.path.join(BASE_DIR, "config")
+TEMP_DIR = os.path.join(BASE_DIR, "temp")
+RESULT_DIR = os.path.join(BASE_DIR, "results")
+
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.yaml")
 MATERIAL_CONFIG = os.path.join(CONFIG_DIR, "material.yaml")
+DEFAULT_TEMPLATE = os.path.join(BASE_DIR, "template2.feb")
 
 def main():
     parser = argparse.ArgumentParser(description="VEXIS-CAE Auto Analysis Workflow")
@@ -49,7 +57,7 @@ def main():
                 material_yaml = MATERIAL_CONFIG
                 mesh_config_path = CONFIG_FILE
                 push_dist, sim_steps, mat_name, num_threads = None, 20, None, None
-                template_feb = "template2.feb" # Default fallback
+                template_feb = DEFAULT_TEMPLATE
                 febio_path = None # Will use helper default if not in config
 
                 if os.path.exists(CONFIG_FILE):

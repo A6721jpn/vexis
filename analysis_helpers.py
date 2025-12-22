@@ -11,9 +11,13 @@ from tqdm import tqdm
 from src.mesh_swap.mesh_replacer import load_reference, replace_mesh, save_file, adjust_keycap_height, override_rigid_bc, override_control_params
 from src.mesh_swap.result_analysis.extract_results import process_log
 
-# Determine global log path (could be passed in, but hardcoding relative to helper for now)
-# Assuming run from Proto2/
-GLOBAL_LOG_PATH = "temp/workflow_detailed.log"
+# Determine base directory for absolute paths
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+GLOBAL_LOG_PATH = os.path.join(BASE_DIR, "temp", "workflow_detailed.log")
 
 @contextlib.contextmanager
 def redirect_output_to_file(log_path=GLOBAL_LOG_PATH):

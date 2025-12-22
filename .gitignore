@@ -105,6 +105,8 @@ dist/
 *.egg-info/
 .eggs/
 pip-wheel-metadata/
+build.py
+*.spec
 
 # --- Test / coverage ---
 .pytest_cache/
