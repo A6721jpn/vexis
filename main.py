@@ -23,13 +23,13 @@ def main():
     
     # Show Logo using 'art' library
     try:
-        from art import tprint
-        tprint("VEXIS-CAE", font="doom")
+        from art import text2art
+        print(text2art("VEXIS-CAE", font="doom").rstrip() + "\n")
     except ImportError:
-        print("\n--- VEXIS-CAE Analysis Workflow ---")
+        print("--- VEXIS-CAE Analysis Workflow ---")
     
-    print(f"--- Auto Analysis Workflow ---\n")
-    print(f"Target Files: {len(steps)} | Mode: {'Mesh-Only' if args.mesh_only else 'Skip-Mesh' if args.skip_mesh else 'Full'}\n")
+    print(f"--- Auto Analysis Workflow ---")
+    print(f"Target Files: {len(steps)} | Mode: {'Mesh-Only' if args.mesh_only else 'Skip-Mesh' if args.skip_mesh else 'Full'}")
     print(f"Controls: [s] = Skip current job, [Ctrl+C] = Stop all")
 
     with tqdm(steps, desc="Initializing...", position=0) as pbar:
