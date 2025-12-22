@@ -7,9 +7,11 @@ import analysis_helpers as helpers
 # Paths relative to VEXIS-CAE/
 # Default paths relative to VEXIS-CAE  /
 INPUT_DIR = "input"
+CONFIG_DIR = "config"
 TEMP_DIR = "temp"
 RESULT_DIR = "results"
-CONFIG_FILE = os.path.join(INPUT_DIR, "config.yaml")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.yaml")
+MATERIAL_CONFIG = os.path.join(CONFIG_DIR, "material.yaml")
 
 def main():
     parser = argparse.ArgumentParser(description="VEXIS-CAE Auto Analysis Workflow")
@@ -19,18 +21,15 @@ def main():
 
     steps = glob.glob(os.path.join(INPUT_DIR, "*.stp")) + glob.glob(os.path.join(INPUT_DIR, "*.step"))
     
-    print(f"")
-    print(r"     /##\            /##" + "\\")
-    print(r"    /#__#\          /#__#" + "\\")
-    print(r"    |#::#|          |#::#|")
-    print(r"     \#::#\        /#::#/")
-    print(r"      \#::#\      /#::#/")
-    print(r"       \#::#\    /#::#/")
-    print(r"        \#::#\__/#::#/")
-    print(r"         \##########/")
-    print(f"")
-    print(f"--- Auto Analysis Workflow (VEXIS-CAE) ---")
-    print(f"Target Files: {len(steps)} | Mode: {'Mesh-Only' if args.mesh_only else 'Skip-Mesh' if args.skip_mesh else 'Full'}")
+    # Show Logo using 'art' library
+    try:
+        from art import tprint
+        tprint("VEXIS-CAE", font="doom")
+    except ImportError:
+        print("\n--- VEXIS-CAE Analysis Workflow ---")
+    
+    print(f"--- Auto Analysis Workflow ---\n")
+    print(f"Target Files: {len(steps)} | Mode: {'Mesh-Only' if args.mesh_only else 'Skip-Mesh' if args.skip_mesh else 'Full'}\n")
     print(f"Controls: [s] = Skip current job, [Ctrl+C] = Stop all")
 
     with tqdm(steps, desc="Initializing...", position=0) as pbar:
@@ -47,7 +46,7 @@ def main():
             
             try:
                 # --- CONFIG & PATHS ---
-                material_yaml = os.path.join(INPUT_DIR, "material.yaml")
+                material_yaml = MATERIAL_CONFIG
                 mesh_config_path = CONFIG_FILE
                 push_dist, sim_steps, mat_name, num_threads = None, 20, None, None
                 template_feb = "template2.feb" # Default fallback
