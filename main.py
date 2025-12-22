@@ -24,7 +24,7 @@ def main():
     # Show Logo using 'art' library
     try:
         from art import text2art
-        print(text2art("VEXIS-CAE", font="doom").rstrip() + "\n")
+        print(text2art("VEXIS - CAE", font="doom").rstrip() + "\n")
     except ImportError:
         print("--- VEXIS-CAE Analysis Workflow ---")
     
