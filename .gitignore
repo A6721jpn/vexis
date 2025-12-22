@@ -107,6 +107,7 @@ dist/
 pip-wheel-metadata/
 build.py
 *.spec
+icon.ico
 
 # --- Test / coverage ---
 .pytest_cache/
