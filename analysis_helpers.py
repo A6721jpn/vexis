@@ -80,7 +80,12 @@ def run_meshing(step_file, config, temp_dir):
     
     # Run Mesh Generation in Subprocess to capture C++ (Gmsh) output safely
     # This prevents Gmsh logs from leaking to console and avoids os.dup2 crashes
-    cmd = [sys.executable, "-m", "src.mesh_gen.main", config, step_file, "-o", out_vtk]
+    if getattr(sys, 'frozen', False):
+        # Frozen EXE: Use internal flags added to main.py
+        cmd = [sys.executable, "--run-mesh-gen", "--internal-config", config, "--internal-stp", step_file, "--internal-out", out_vtk]
+    else:
+        # Script: Standard -m call
+        cmd = [sys.executable, "-m", "src.mesh_gen.main", config, step_file, "-o", out_vtk]
     
     # Ensure log dir exists
     os.makedirs(os.path.dirname(os.path.abspath(GLOBAL_LOG_PATH)), exist_ok=True)
