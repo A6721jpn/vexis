@@ -115,7 +115,10 @@ def main():
                 tqdm.write(f"\n! ERROR in {base_name}: {e}")
 
     print(f"\nWorkflow Completed.")
-    input("\nPress Enter to exit...")
+    try:
+        input("\nPress Enter to exit...")
+    except (EOFError, KeyboardInterrupt):
+        pass
 
 if __name__ == "__main__":
     main()
