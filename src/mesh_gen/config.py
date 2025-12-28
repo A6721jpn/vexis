@@ -9,7 +9,6 @@ class MeshGenConfig:
     revolve_layers: int = 16
     mesh_size: float = 0.5
     mesh_dimension: int = 1        # (historical naming) element order: 1=linear, 2=quadratic, ...
-    output_format: str = "vtk"
     ogrid_core_ratio: float = 0.1
     # --- Core (inner) 2D O-grid settings ---
     core_inner_ratio: float = 0.35  # size of inner square/rectangle relative to R_core (0<ratio<1)
@@ -39,7 +38,6 @@ class MeshGenConfig:
             revolve_layers=_get("revolve_layers", int, MeshGenConfig.revolve_layers),
             mesh_size=_get("mesh_size", float, MeshGenConfig.mesh_size),
             mesh_dimension=_get("mesh_dimension", int, MeshGenConfig.mesh_dimension),
-            output_format=_get("output_format", str, MeshGenConfig.output_format),
             ogrid_core_ratio=_get("ogrid_core_ratio", float, MeshGenConfig.ogrid_core_ratio),
             core_inner_ratio=_get("core_inner_ratio", float, MeshGenConfig.core_inner_ratio),
             core_radial_layers=_get("core_radial_layers", int, MeshGenConfig.core_radial_layers),

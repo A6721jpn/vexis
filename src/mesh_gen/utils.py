@@ -6,6 +6,7 @@ import numpy as np
 import felupe as fe
 import meshio
 import gmsh
+import contextlib
 from scipy.spatial import cKDTree
 from typing import Tuple, List, Optional
 
@@ -387,18 +388,8 @@ def _merge_duplicate_points_with_backoff(mesh: fe.Mesh, start_decimals: int, max
 
 def save_mesh_with_optional_quadratic(mesh: fe.Mesh, output_path: str, element_order: int) -> None:
     """
-    Save mesh with optional order elevation.
-
-    - ext == ".msh":
-        * 1次要素 → 直接 Gmsh2.2 で .msh 書き出し (meshio)
-        * 高次要素 → 一時 .msh を Gmsh で次数上げしてから出力
-    - ext == ".inp":
-        * 1次/高次ともに：
-            まず Gmsh2.2 の一時 .msh を作成 → Gmsh Python API で .inp へ変換
-            （GUIでやっていることをそのままPythonで再現）
-    - それ以外：
-        * 1次要素 → meshio のデフォルト
-        * 高次要素 → 一時 .msh を Gmsh で次数上げ → meshio で目的フォーマットへ変換
+    Save mesh as VTK (primary) or MSH (interoperability).
+    Higher-order mesh is generated via Gmsh if element_order > 1.
     """
     out_dir = os.path.dirname(output_path)
     if out_dir:
@@ -407,87 +398,34 @@ def save_mesh_with_optional_quadratic(mesh: fe.Mesh, output_path: str, element_o
     meshio_mesh = mesh.as_meshio()
     ext = os.path.splitext(output_path)[1].lower()
 
-    is_msh = (ext == ".msh")
-    is_inp = (ext == ".inp")
-
-    # ----------------------------------------------------
-    # 0) Abaqus .inp は常に「Gmshで .msh → .inp 変換」経由
-    # ----------------------------------------------------
-    if is_inp:
+    if element_order == 1:
+        # Linear (Hex8): Direct save via meshio
+        # For .msh, use gmsh22 for better compatibility with target solvers
+        fmt = "gmsh22" if ext == ".msh" else None
+        meshio.write(output_path, meshio_mesh, file_format=fmt, binary=False)
+    else:
+        # Higher-order: Use Gmsh to elevate order
         base, _ = os.path.splitext(output_path)
-        tmp_lin = base + "_lin.msh"
+        tmp_lin = base + "_tmp_lin.msh"
+        tmp_ho  = base + "_tmp_ho.msh"
 
-        # まず felupe → meshio → Gmsh2.2 の線形メッシュを書き出す
         meshio.write(tmp_lin, meshio_mesh, file_format="gmsh22", binary=False)
-
         gmsh.initialize()
         try:
             gmsh.open(tmp_lin)
-            if element_order > 1:
-                gmsh.model.mesh.setOrder(int(element_order))
-            # 拡張子 .inp を見て Gmsh が Abaqus フォーマットで書き出す
-            gmsh.write(output_path)
-            # 検証用に .msh も保存する (Gmsh v4 ASCII)
-            gmsh.option.setNumber("Mesh.Binary", 0)
-            gmsh.option.setNumber("Mesh.MshFileVersion", 4.1)
-            gmsh.write(base + ".msh")
+            gmsh.model.mesh.setOrder(int(element_order))
+            gmsh.write(tmp_ho)
         finally:
             gmsh.finalize()
 
-        try:
-            os.remove(tmp_lin)
-        except OSError:
-            pass
-
-        print(f"[OK] Abaqus INP saved via Gmsh: {output_path}")
-        print(f"[OK] Verification MSH saved: {base}.msh")
-        return
-
-    # ----------------------------------------------------
-    # 1) 1次要素 (Hex8) で .msh / その他 を保存
-    # ----------------------------------------------------
-    if element_order == 1:
-        if is_msh:
-            # これまでどおり Gmsh2.2 ASCII で .msh 保存
-            meshio.write(output_path, meshio_mesh, file_format="gmsh22", binary=False)
+        if ext == ".msh":
+            shutil.move(tmp_ho, output_path)
         else:
-            # .vtkなどは meshio の標準出力
-            meshio.write(output_path, meshio_mesh, binary=False)
+            m = meshio.read(tmp_ho)
+            meshio.write(output_path, m, binary=False)
 
-        print(f"[OK] Mesh saved: {output_path}")
-        return
+        for p in (tmp_lin, tmp_ho):
+            with contextlib.suppress(OSError):
+                os.remove(p)
 
-    # ----------------------------------------------------
-    # 2) 高次要素 (2次以上) で .msh / その他 を保存
-    # ----------------------------------------------------
-    base, _ = os.path.splitext(output_path)
-    tmp_lin = base + "_lin.msh"
-    tmp_ho  = base + f"_order{element_order}.msh"
-
-    # まず線形メッシュを Gmsh2.2 で一時保存
-    meshio.write(tmp_lin, meshio_mesh, file_format="gmsh22", binary=False)
-
-    gmsh.initialize()
-    try:
-        gmsh.open(tmp_lin)
-        gmsh.model.mesh.setOrder(int(element_order))
-        gmsh.write(tmp_ho)
-    finally:
-        gmsh.finalize()
-
-    if is_msh:
-        # 高次 .msh：Gmsh出力をそのまま最終ファイルに
-        shutil.move(tmp_ho, output_path)
-    else:
-        # それ以外：Gmsh出力の .msh を meshio で読み直して変換
-        m = meshio.read(tmp_ho)
-        meshio.write(output_path, m, binary=False)
-
-    # 一時ファイル後片付け
-    for p in (tmp_lin, tmp_ho):
-        try:
-            os.remove(p)
-        except OSError:
-            pass
-
-    print(f"[OK] Higher-order mesh saved: {output_path}")
+    print(f"[OK] Mesh saved: {output_path} (Order {element_order})")
