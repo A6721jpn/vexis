@@ -6,6 +6,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+#Under development
+plugins/
+
 # =========================================================
 # FEBio (Finite Elements for Biomechanics)
 # =========================================================
