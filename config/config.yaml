@@ -1,5 +1,5 @@
 # =================================================
-# VEXIS-CAE v0.4 (Proto4) Simulation Configuration
+# VEXIS-CAE v0.5 (Proto5) Simulation Configuration
 # =================================================
 
 mesh:
@@ -27,6 +27,6 @@ analysis:
   num_threads:           # Number of CPU threads for solver (Leave empty for full power)
 
 # ========================================================================
-#   Copyright (C) 2025 Akihisa Okuni
-#   VAXIS-CAE is free software under the terms of the GNU GPL v3 or later
+#   Copyright (C) 2025 PK6721jpn
+#   VEXIS-CAE is free software under the terms of the GNU GPL v3 or later
 # ========================================================================

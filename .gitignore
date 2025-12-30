@@ -8,6 +8,8 @@ Thumbs.db
 
 #Under development
 plugins/
+!plugins/advanced_mesher/
+!plugins/Development_plan_mesh_gen_FElupe.md
 
 # =========================================================
 # FEBio (Finite Elements for Biomechanics)
