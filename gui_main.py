@@ -60,7 +60,7 @@ def main():
     # --- Taskbar Icon Fix (AppUserModelID) ---
     import ctypes
     # Changed ID again to force refresh
-    myappid = 'vexis_cae.gui.version.1.0.rev3' 
+    myappid = 'vexis_cae.gui.version.0.5.0.rev3' 
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception:
