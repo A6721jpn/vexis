@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QProgressBar, QLabel, QPlainTextEdit
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QTextCursor
 
 class ProgressPanel(QWidget):
     def __init__(self):
@@ -34,7 +35,7 @@ class ProgressPanel(QWidget):
 
     def append_log(self, text):
         self.log_area.appendPlainText(text)
-        self.log_area.moveCursor(self.log_area.textCursor().End)
+        self.log_area.moveCursor(QTextCursor.MoveOperation.End)
 
     def clear(self):
         self.log_area.clear()

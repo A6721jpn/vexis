@@ -2,7 +2,7 @@ import os
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QListWidget, QListWidgetItem, QStackedWidget, 
                              QPushButton, QLabel, QProgressBar, QStatusBar,
-                             QToolBar, QApplication)
+                             QToolBar, QApplication, QMessageBox)
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QAction, QIcon
 
@@ -45,7 +45,43 @@ class MainWindow(QMainWindow):
     def _setup_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
+        outer_layout = QVBoxLayout(central_widget)
+        
+        # Top: Batch Progress Bar
+        batch_frame = QWidget()
+        batch_layout = QHBoxLayout(batch_frame)
+        batch_layout.setContentsMargins(10, 5, 10, 5)
+        
+        self.batch_label = QLabel("Batch Progress:")
+        self.batch_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        batch_layout.addWidget(self.batch_label)
+        
+        self.batch_progress = QProgressBar()
+        self.batch_progress.setRange(0, 100)
+        self.batch_progress.setValue(0)
+        self.batch_progress.setMinimumHeight(25)
+        self.batch_progress.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #555;
+                border-radius: 5px;
+                text-align: center;
+                font-weight: bold;
+            }
+            QProgressBar::chunk {
+                background-color: #4CAF50;
+                border-radius: 4px;
+            }
+        """)
+        batch_layout.addWidget(self.batch_progress, 1)
+        
+        self.batch_status = QLabel("0 / 0 completed")
+        self.batch_status.setStyleSheet("font-size: 12px; margin-left: 10px;")
+        batch_layout.addWidget(self.batch_status)
+        
+        outer_layout.addWidget(batch_frame)
+        
+        # Main content area
+        main_layout = QHBoxLayout()
         
         # Left Panel: Job List
         left_panel = QWidget()
@@ -80,6 +116,8 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(left_panel)
         main_layout.addWidget(self.preview_stack, 1)
         
+        outer_layout.addLayout(main_layout, 1)
+        
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
@@ -97,11 +135,22 @@ class MainWindow(QMainWindow):
         self.stop_action.triggered.connect(self.on_stop_clicked)
         toolbar.addAction(self.stop_action)
         
+        self.skip_action = QAction("⏭ Skip Current", self)
+        self.skip_action.setEnabled(False)
+        self.skip_action.triggered.connect(self.on_skip_clicked)
+        toolbar.addAction(self.skip_action)
+        
         toolbar.addSeparator()
         
         self.refresh_action = QAction("🔄 Refresh", self)
         self.refresh_action.triggered.connect(self.on_refresh_clicked)
         toolbar.addAction(self.refresh_action)
+        
+        toolbar.addSeparator()
+        
+        self.exit_action = QAction("❌ Exit", self)
+        self.exit_action.triggered.connect(self.on_exit_clicked)
+        toolbar.addAction(self.exit_action)
 
     def _connect_signals(self):
         self.file_watcher.file_added.connect(self.job_manager.add_job_from_path)
@@ -139,6 +188,9 @@ class MainWindow(QMainWindow):
                 item.setText(f"{job.name} [{job.display_status()}]")
                 break
         
+        # Update batch progress
+        self._update_batch_progress()
+        
         current_job_id = self._get_current_job_id()
         if current_job_id == job_id:
             self.on_job_selected(self.job_list_widget.currentRow())
@@ -154,12 +206,26 @@ class MainWindow(QMainWindow):
         if self._get_current_job_id() == job_id:
             self.progress_panel.append_log(line)
 
+    def _update_batch_progress(self):
+        total = len(self.jobs)
+        if total == 0:
+            self.batch_progress.setValue(0)
+            self.batch_status.setText("0 / 0 completed")
+            return
+        
+        completed = sum(1 for j in self.jobs.values() 
+                       if j.status in [JobStatus.COMPLETED, JobStatus.ERROR, JobStatus.SKIPPED])
+        percent = int((completed / total) * 100)
+        self.batch_progress.setValue(percent)
+        self.batch_status.setText(f"{completed} / {total} completed")
+
     def _refresh_list_ui(self):
         self.job_list_widget.clear()
         for job in self.jobs.values():
             list_item = QListWidgetItem(f"{job.name} [{job.display_status()}]")
             list_item.setData(Qt.UserRole, job.id)
             self.job_list_widget.addItem(list_item)
+        self._update_batch_progress()
 
     def _get_current_job_id(self):
         row = self.job_list_widget.currentRow()
@@ -192,22 +258,71 @@ class MainWindow(QMainWindow):
         else:
             self.preview_stack.setCurrentWidget(self.mesh_panel)
             vtk_path = os.path.join(self.temp_dir, f"{job.name}.vtk")
-            self.mesh_panel.load_mesh(vtk_path)
+            if os.path.exists(vtk_path):
+                self.mesh_panel.load_mesh(vtk_path)
+            else:
+                # Show STEP geometry instead
+                self.mesh_panel.load_step(job.step_path)
 
     def on_start_clicked(self):
         self.run_action.setEnabled(False)
         self.stop_action.setEnabled(True)
+        self.skip_action.setEnabled(True)
         self.job_manager.start_batch()
 
     def on_stop_clicked(self):
         self.run_action.setEnabled(True)
         self.stop_action.setEnabled(False)
+        self.skip_action.setEnabled(False)
         self.job_manager.stop_batch()
+
+    def on_skip_clicked(self):
+        self.job_manager.skip_current_job()
 
     def on_refresh_clicked(self):
         self._init_existing_jobs()
 
+    def on_exit_clicked(self):
+        self.close()
+
     def closeEvent(self, event):
-        self.file_watcher.stop()
-        self.job_manager.stop_batch()
-        event.accept()
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self, 
+            "Exit Confirmation",
+            "Are you sure you want to exit?\nAll running analyses will be stopped.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            # Stop all background processes
+            self.status_bar.showMessage("Shutting down...")
+            
+            # Stop file watcher
+            try:
+                self.file_watcher.stop()
+            except:
+                pass
+            
+            # Stop batch processing and worker threads
+            try:
+                self.job_manager.stop_batch()
+                if self.job_manager.worker and self.job_manager.worker.isRunning():
+                    self.job_manager.worker.terminate()
+                    self.job_manager.worker.wait(2000)
+            except:
+                pass
+            
+            # Clean up pyvista plotters
+            try:
+                if hasattr(self.mesh_panel, 'plotter') and self.mesh_panel.plotter:
+                    self.mesh_panel.plotter.close()
+                if hasattr(self.result_panel, 'plotter') and self.result_panel.plotter:
+                    self.result_panel.plotter.close()
+            except:
+                pass
+            
+            event.accept()
+        else:
+            event.ignore()

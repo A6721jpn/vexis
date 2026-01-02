@@ -2,50 +2,69 @@ import os
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox
 from PySide6.QtCore import Qt
 
-try:
-    from pyvistaqt import QtInteractor
-    import pyvista as pv
-    PYVISTA_AVAILABLE = True
-except ImportError:
-    PYVISTA_AVAILABLE = False
+# Lazy import
+PYVISTA_AVAILABLE = False
+pv = None
+QtInteractor = None
+
+def _ensure_pyvista():
+    global PYVISTA_AVAILABLE, pv, QtInteractor
+    if pv is None:
+        try:
+            import pyvista as _pv
+            from pyvistaqt import QtInteractor as _QtInteractor
+            pv = _pv
+            QtInteractor = _QtInteractor
+            PYVISTA_AVAILABLE = True
+        except ImportError:
+            PYVISTA_AVAILABLE = False
+    return PYVISTA_AVAILABLE
 
 class ResultViewer(QWidget):
     def __init__(self):
         super().__init__()
         self.mesh = None
+        self.plotter = None
+        self._initialized = False
         self._setup_ui()
         
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        self.layout = QVBoxLayout(self)
         
-        # Toolbar for selection
         ctrl_layout = QHBoxLayout()
         ctrl_layout.addWidget(QLabel("Field:"))
         self.field_combo = QComboBox()
         self.field_combo.currentTextChanged.connect(self.on_field_changed)
         ctrl_layout.addWidget(self.field_combo)
         ctrl_layout.addStretch()
-        layout.addLayout(ctrl_layout)
+        self.layout.addLayout(ctrl_layout)
         
-        if PYVISTA_AVAILABLE:
-            self.plotter = QtInteractor(self)
-            layout.addWidget(self.plotter)
-            self.plotter.set_background("dimgray")
-        else:
-            self.label = QLabel("pyvistaqt not installed.")
-            layout.addWidget(self.label)
-            self.plotter = None
+        self.placeholder = QLabel("Result Viewer\n(Select a completed job)")
+        self.placeholder.setAlignment(Qt.AlignCenter)
+        self.placeholder.setStyleSheet("background-color: #3d3d3d; color: #888;")
+        self.layout.addWidget(self.placeholder)
 
-    def load_result(self, base_path_no_ext):
-        if not PYVISTA_AVAILABLE or not self.plotter:
+    def _init_plotter(self):
+        if self._initialized:
+            return
+        if not _ensure_pyvista():
+            self.placeholder.setText("pyvistaqt not installed")
             return
             
-        # Try to find a result file. Priority: .vtk (with results), .pos, .xdmf
-        # If none found, use the mesh .vtk as fallback
+        self._initialized = True
+        self.placeholder.hide()
+        self.plotter = QtInteractor(self)
+        self.layout.addWidget(self.plotter)
+        self.plotter.set_background("dimgray")
+
+    def load_result(self, base_path_no_ext):
+        self._init_plotter()
+        if not self.plotter:
+            return
+            
         possible_exts = [".vtk", ".pos", ".xdmf"]
         found_path = None
         
-        # Check results/ first
         for ext in possible_exts:
             p = base_path_no_ext + ext
             if os.path.exists(p):
@@ -53,7 +72,6 @@ class ResultViewer(QWidget):
                 break
         
         if not found_path:
-            # Fallback to temp mesh if provided
             if os.path.exists(base_path_no_ext + ".vtk"):
                 found_path = base_path_no_ext + ".vtk"
 
@@ -66,7 +84,6 @@ class ResultViewer(QWidget):
             self.mesh = pv.read(found_path)
             self.plotter.clear()
             
-            # Update field combo
             self.field_combo.clear()
             point_fields = list(self.mesh.point_data.keys())
             cell_fields = list(self.mesh.cell_data.keys())
@@ -83,7 +100,7 @@ class ResultViewer(QWidget):
             self.plotter.reset_camera()
         except Exception as e:
             print(f"Result Viewer Error loading {found_path}: {e}")
-            self.plotter.add_text(f"Error loading results: {str(e)}", position='upper_left')
+            self.plotter.add_text(f"Error: {str(e)}", position='upper_left')
 
     def on_field_changed(self, field_name):
         if not self.mesh or not self.plotter:

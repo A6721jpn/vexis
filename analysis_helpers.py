@@ -18,6 +18,7 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 GLOBAL_LOG_PATH = os.path.join(BASE_DIR, "temp", "workflow_detailed.log")
+DEFAULT_TEMPLATE = os.path.join(BASE_DIR, "template2.feb")
 
 @contextlib.contextmanager
 def redirect_output_to_file(log_path=GLOBAL_LOG_PATH):

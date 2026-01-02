@@ -81,6 +81,14 @@ class AnalysisWorker(QThread):
     def stop(self):
         self._is_running = False
 
+    def skip(self):
+        self._is_running = False
+        self._skipped = True
+        # Emit skipped status
+        self.log_updated.emit(self.job.id, ">>> Skipped by user")
+        self.progress_updated.emit(self.job.id, 100, "Skipped")
+        self.finished.emit(self.job.id, False)
+
 class JobManager(QObject):
     job_added = Signal(JobItem)
     job_removed = Signal(str)
@@ -155,6 +163,10 @@ class JobManager(QObject):
         if self.worker:
             self.worker.stop()
 
+    def skip_current_job(self):
+        if self.worker and self.worker.isRunning():
+            self.worker.skip()
+
     @Slot(str, int, str)
     def _on_worker_progress(self, job_id, progress, status_text):
         if job_id in self.jobs:
@@ -173,7 +185,12 @@ class JobManager(QObject):
     def _on_worker_finished(self, job_id, success):
         if job_id in self.jobs:
             job = self.jobs[job_id]
-            job.status = JobStatus.COMPLETED if success else JobStatus.ERROR
+            if hasattr(self.worker, '_skipped') and self.worker._skipped:
+                job.status = JobStatus.SKIPPED
+            elif success:
+                job.status = JobStatus.COMPLETED
+            else:
+                job.status = JobStatus.ERROR
             self.status_changed.emit(job_id, job.status)
         
         if self._batch_running:
