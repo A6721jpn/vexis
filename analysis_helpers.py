@@ -74,32 +74,34 @@ def _get_simulation_total_time(feb_path):
     except Exception:
         return 1.0
 
-def run_meshing(step_file, config, temp_dir):
+def run_meshing(step_file, config, temp_dir, log_callback=None):
     base_name = os.path.splitext(os.path.basename(step_file))[0]
     out_vtk = os.path.join(temp_dir, f"{base_name}.vtk")
     
-    # Run Mesh Generation in Subprocess to capture C++ (Gmsh) output safely
-    # This prevents Gmsh logs from leaking to console and avoids os.dup2 crashes
     if getattr(sys, 'frozen', False):
-        # Frozen EXE: Use internal flags added to main.py
         cmd = [sys.executable, "--run-mesh-gen", "--internal-config", config, "--internal-stp", step_file, "--internal-out", out_vtk]
     else:
-        # Script: Standard -m call
         cmd = [sys.executable, "-m", "src.mesh_gen.main", config, step_file, "-o", out_vtk]
     
-    # Ensure log dir exists
     os.makedirs(os.path.dirname(os.path.abspath(GLOBAL_LOG_PATH)), exist_ok=True)
     
     with open(GLOBAL_LOG_PATH, "a", encoding="utf-8") as f_log:
         f_log.write(f"\n--- Meshing Log for {base_name} ---\n")
         f_log.flush()
         
-        # We redirect both stdout and stderr to the log file
         try:
-            subprocess.run(cmd, stdout=f_log, stderr=f_log, check=True)
-        except subprocess.CalledProcessError as e:
-            f_log.write(f"\n!!! Meshing Failed with code {e.returncode} !!!\n")
-            raise RuntimeError(f"Meshing failed for {base_name}. Check {GLOBAL_LOG_PATH} for details.")
+            # Use Popen to capture logs in real-time for GUI
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            for line in proc.stdout:
+                f_log.write(line)
+                if log_callback:
+                    log_callback(line.strip())
+            proc.wait()
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, cmd)
+        except Exception as e:
+            f_log.write(f"\n!!! Meshing Failed: {e} !!!\n")
+            raise RuntimeError(f"Meshing failed for {base_name}.")
             
         f_log.write("-----------------------------------\n")
         
@@ -160,20 +162,16 @@ def run_integration(vtk_path, template, out_feb, push_dist_override=None, steps=
 
     return out_feb 
 
-def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=None):
+def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=None, log_callback=None, progress_callback=None):
     base_name = os.path.splitext(os.path.basename(feb_path))[0]
     
-    # 1. Run Solver
-    # Prepare environment with thread control
     env = os.environ.copy()
     if num_threads:
         env["OMP_NUM_THREADS"] = str(num_threads)
-        print(f"  > Solver running with {num_threads} threads (OMP_NUM_THREADS)")
 
     log_name = f"{base_name}_log.txt"
     log_file = os.path.join(result_dir, log_name)
     
-    # Use list for shell=False to avoid CMD output buffering
     if not febio_exe:
         febio_exe = r"C:\Program Files\FEBioStudio\bin\febio4.exe"
     
@@ -181,66 +179,66 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
 
     total_time = _get_simulation_total_time(feb_path)
     
-    # Unit is Time (float)
-    solver_bar = tqdm(total=total_time, desc="Solver Time", position=1, leave=False, 
-                      bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]")
+    solver_bar = None
+    if not progress_callback:
+        solver_bar = tqdm(total=total_time, desc="Solver Time", position=1, leave=False, 
+                          bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]")
     
     proc = None
     last_refresh_time = time.time()
     
     try:
         with open(log_file, "w") as f_log:
-            # bufsize=1 means line buffered
             proc = subprocess.Popen(cmd, env=env, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
             
-            # Iterate over stdout line by line as they arrive
             for line in proc.stdout:
                 f_log.write(line) 
+                if log_callback:
+                    log_callback(line.strip())
                 
-                # Update Progress Bar based on 'time = X' or 'time=X'
+                # Update Progress
                 if "time" in line:
-                    # Match "time = 0.1" or "time=0.1", case-insensitive
                     match = re.search(r"time\s*=\s*([\d\.eE\+\-]+)", line, re.IGNORECASE)
                     if match:
                         try:
                             current_time = float(match.group(1))
-                            solver_bar.n = current_time
-                            solver_bar.last_print_n = current_time
-                            solver_bar.refresh()
+                            if progress_callback:
+                                # Convert time to percentage (heuristic)
+                                percent = int((current_time / total_time) * 100) if total_time > 0 else 0
+                                progress_callback(min(percent, 99))
+                            elif solver_bar:
+                                solver_bar.n = current_time
+                                solver_bar.refresh()
                             last_refresh_time = time.time()
                         except ValueError:
                             pass
                 
-                # Periodic forced refresh (every 2.0s)
-                if time.time() - last_refresh_time > 2.0:
+                if solver_bar and time.time() - last_refresh_time > 2.0:
                     solver_bar.refresh()
                     last_refresh_time = time.time()
                 
-                # Check for 's' key skip (Windows only)
-                if msvcrt.kbhit():
+                # Check skip (CLI only)
+                if not progress_callback and msvcrt.kbhit():
                     key = msvcrt.getch()
                     try:
                         key_char = key.decode().lower()
                     except:
                         key_char = ""
-                    
                     if key_char == 's':
-                        tqdm.write(f"\n  >>> 's' key pressed: Skipping current job ({base_name})...")
                         proc.kill()
                         raise KeyboardInterrupt("SkipJob")
 
         proc.wait() 
         if proc.returncode != 0:
-            tqdm.write(f"\n! Solver crashed with exit code {proc.returncode}")
             return False
             
     except KeyboardInterrupt as e:
         if proc: proc.kill()
-        solver_bar.close()
+        if solver_bar: solver_bar.close()
         if str(e) != "SkipJob": raise e
         return False
     finally:
-        solver_bar.close()
+        if solver_bar: solver_bar.close()
 
     
     # 2. Extract Results
