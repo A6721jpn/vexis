@@ -9,6 +9,7 @@ class JobStatus(Enum):
     COMPLETED = auto()
     ERROR = auto()
     SKIPPED = auto()
+    STOPPED = auto()
 
 @dataclass
 class JobItem:
@@ -31,6 +32,7 @@ class JobItem:
             JobStatus.RUNNING: "Analyzing...",
             JobStatus.COMPLETED: "Completed",
             JobStatus.ERROR: "Error",
-            JobStatus.SKIPPED: "Skipped"
+            JobStatus.SKIPPED: "Skipped",
+            JobStatus.STOPPED: "Stopped"
         }
         return status_map.get(self.status, "Unknown")

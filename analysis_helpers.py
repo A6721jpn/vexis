@@ -174,7 +174,16 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
     log_file = os.path.join(result_dir, log_name)
     
     if not febio_exe:
-        febio_exe = r"C:\Program Files\FEBioStudio\bin\febio4.exe"
+        # 1. Check local 'solver' directory (Portable)
+        local_solver = os.path.join(BASE_DIR, "solver", "febio4.exe")
+        if os.path.exists(local_solver):
+            febio_exe = local_solver
+        # 2. Check Environment Variable
+        elif os.environ.get("FEBIO_PATH"):
+            febio_exe = os.environ["FEBIO_PATH"]
+        # 3. Default System Path
+        else:
+            febio_exe = r"C:\Program Files\FEBioStudio\bin\febio4.exe"
     
     cmd = [febio_exe, "-i", feb_path]
 

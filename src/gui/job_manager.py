@@ -18,6 +18,7 @@ class AnalysisWorker(QThread):
         self.temp_dir = temp_dir
         self.result_dir = result_dir
         self._is_running = True
+        self._stopped = False
 
     def run(self):
         job_id = self.job.id
@@ -34,11 +35,24 @@ class AnalysisWorker(QThread):
         try:
             # --- Load Config ---
             push_dist, sim_steps = -1.0, 20
+            febio_path = None
+            template_name = "template2.feb"
+            
             if os.path.exists(self.config_path):
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     conf = yaml.safe_load(f).get("analysis", {})
                     push_dist = conf.get("push_dist", push_dist)
                     sim_steps = conf.get("time_steps", sim_steps)
+                    febio_path = conf.get("febio_path", None)
+                    template_name = conf.get("template_feb", template_name)
+
+            # Resolve template path (relative to config dir usually, but here relative to root/base)
+            # Assuming template is in the app root or specified path
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(self.config_path))) # vexis root
+            template_path = os.path.join(base_dir, template_name)
+            if not os.path.exists(template_path):
+                # Fallback to internal default if not found
+                template_path = helpers.DEFAULT_TEMPLATE
 
             # --- 1. Meshing ---
             self.progress_updated.emit(job_id, 1, "Meshing...")
@@ -51,7 +65,7 @@ class AnalysisWorker(QThread):
             # --- 2. Integration ---
             self.progress_updated.emit(job_id, 10, "Preparing FEBio model...")
             out_feb = os.path.join(self.temp_dir, f"{base_name}.feb")
-            helpers.run_integration(vtk_path, helpers.DEFAULT_TEMPLATE, out_feb, push_dist, sim_steps)
+            helpers.run_integration(vtk_path, template_path, out_feb, push_dist, sim_steps)
             self.job.feb_path = out_feb
             self.progress_updated.emit(job_id, 15, "Prep Complete")
             
@@ -66,6 +80,7 @@ class AnalysisWorker(QThread):
 
             success = helpers.run_solver_and_extract(
                 out_feb, self.result_dir, 
+                febio_exe=febio_path,
                 log_callback=log_cb, 
                 progress_callback=prog_cb,
                 check_stop_callback=check_stop
@@ -86,6 +101,7 @@ class AnalysisWorker(QThread):
 
     def stop(self):
         self._is_running = False
+        self._stopped = True
 
     def skip(self):
         self._is_running = False
@@ -193,6 +209,10 @@ class JobManager(QObject):
             job = self.jobs[job_id]
             if hasattr(self.worker, '_skipped') and self.worker._skipped:
                 job.status = JobStatus.SKIPPED
+            elif hasattr(self.worker, '_stopped') and self.worker._stopped:
+                job.status = JobStatus.STOPPED
+                job.status_text = "Stopped"
+                job.error_message = "Force stopped by user"
             elif success:
                 job.status = JobStatus.COMPLETED
             else:

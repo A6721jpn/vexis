@@ -262,6 +262,9 @@ class MainWindow(QMainWindow):
             job = self.jobs[job_id]
             err_msg = getattr(job, 'error_message', 'Unknown Error')
             QMessageBox.critical(self, "Analysis Error", f"Job '{job.name}' Failed.\n\nError: {err_msg}")
+        elif status == JobStatus.STOPPED:
+            job = self.jobs[job_id]
+            QMessageBox.information(self, "Analysis Stopped", f"Job '{job.name}' was stopped by user.")
         
         current_job_id = self._get_current_job_id()
         if current_job_id == job_id:

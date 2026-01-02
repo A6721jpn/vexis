@@ -149,7 +149,7 @@ class ResultViewer(QWidget):
             # Auto-set to last step
             last_step = len(self.vtk_files) - 1
             self.slider.setValue(last_step)
-            self.set_step(last_step)
+            self.set_step(last_step, force_reset=True)
             
         else:
             self.slider.setEnabled(False)
@@ -162,7 +162,7 @@ class ResultViewer(QWidget):
                     "Ensure FEBio output is set to VTK in template.", 
                     position='upper_left', font_size=10)
 
-    def set_step(self, step_index):
+    def set_step(self, step_index, force_reset=False):
         if not self.vtk_files or step_index < 0 or step_index >= len(self.vtk_files):
             return
             
@@ -170,7 +170,7 @@ class ResultViewer(QWidget):
         self.time_label.setText(f"Step: {step_index + 1} / {len(self.vtk_files)}")
         
         vtk_path = self.vtk_files[step_index]
-        self._load_mesh_file(vtk_path, is_result=True, reset_cam=(step_index == 0))
+        self._load_mesh_file(vtk_path, is_result=True, reset_cam=(step_index == 0) or force_reset)
 
     def _load_mesh_file(self, file_path, is_result=True, reset_cam=True):
         """Load a mesh file (VTK, etc). Uses caching."""
@@ -264,6 +264,7 @@ class ResultViewer(QWidget):
         
         if reset_cam:
             self.plotter.reset_camera()
+            self.plotter.camera.zoom(0.8) # Zoom out to fit model comfortably
         elif camera:
             self.plotter.camera_position = camera
 
