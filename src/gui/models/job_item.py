@@ -21,6 +21,7 @@ class JobItem:
     vtk_path: Optional[str] = None
     feb_path: Optional[str] = None
     result_path: Optional[str] = None
+    error_message: Optional[str] = None
     log_lines: List[str] = field(default_factory=list)
     
     def display_status(self) -> str:

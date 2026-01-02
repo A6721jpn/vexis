@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="ISO-8859-1"?>
+<?xml version='1.0' encoding='ISO-8859-1'?>
 <febio_spec version="4.0">
 	<Module type="solid">
 		<units>mm-N-s</units>
@@ -13,35 +13,35 @@
 	</Globals>
 	<Material>
 		<material id="1" name="RUBBER" type="uncoupled viscoelastic">
-			<density>1</density>
-			<k>200</k>
+			<density>1.0</density>
+			<k>500.0</k>
 			<pressure_model>Abaqus</pressure_model>
 			<t1>0.1</t1>
-			<t2>1</t2>
-			<t3>0</t3>
-			<t4>0</t4>
-			<t5>0</t5>
-			<t6>0</t6>
+			<t2>1.0</t2>
+			<t3>0.0</t3>
+			<t4>0.0</t4>
+			<t5>0.0</t5>
+			<t6>0.0</t6>
 			<g0>0.85</g0>
-			<g1>0.1</g1>
-			<g2>0.05</g2>
-			<g3>0</g3>
-			<g4>0</g4>
-			<g5>0</g5>
-			<g6>0</g6>
+			<g1>0.5</g1>
+			<g2>0.1</g2>
+			<g3>0.05</g3>
+			<g4>0.0</g4>
+			<g5>0.0</g5>
+			<g6>0.0</g6>
 			<elastic type="Ogden">
-				<c1>4.4</c1>
-				<c2>0.1</c2>
-				<c3>0.01</c3>
-				<c4>0</c4>
-				<c5>0</c5>
-				<c6>0</c6>
-				<m1>0.8</m1>
-				<m2>0.1</m2>
-				<m3>0.01</m3>
-				<m4>0.01</m4>
-				<m5>0.01</m5>
-				<m6>0.01</m6>
+				<c1>10.0</c1>
+				<c2>1.0</c2>
+				<c3>0.1</c3>
+				<c4>0.0</c4>
+				<c5>0.0</c5>
+				<c6>0.0</c6>
+				<m1>2.0</m1>
+				<m2>0.5</m2>
+				<m3>0.05</m3>
+				<m4>0.05</m4>
+				<m5>0.05</m5>
+				<m6>0.05</m6>
 			</elastic>
 		</material>
 		<material id="2" name="MEMBRANE" type="neo-Hookean">
@@ -40758,7 +40758,7 @@
 		</load_controller>
 	</LoadData>
 	<Output>
-		<plotfile type="febio">
+		<plotfile type="vtk">
 			<var type="displacement"/>
 			<var type="stress"/>
 			<var type="relative volume"/>

@@ -4,24 +4,61 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QProgressBar, QStatusBar,
                              QToolBar, QApplication, QMessageBox)
 from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtGui import QAction, QIcon, QPixmap
 
 from src.gui.models.job_item import JobItem, JobStatus
 from src.gui.file_watcher import InputFolderWatcher
 from src.gui.job_manager import JobManager
 from src.gui.panels.mesh_preview import MeshPreview
 from src.gui.panels.progress_panel import ProgressPanel
+from src.gui.panels.progress_panel import ProgressPanel
+from src.gui.panels.progress_panel import ProgressPanel
 from src.gui.panels.result_viewer import ResultViewer
+from src.gui.about_dialog import AboutDialog
+import src.version as v
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("VEXIS-CAE - Auto Analysis Workflow")
+        self.setWindowTitle("VEXIS-CAE - Automatic Rubberdome Analyzer")
         self.resize(1100, 700)
+        
+        # Apply Dark Theme
+        self.setStyleSheet("""
+            QMainWindow, QDialog {
+                background-color: #202020;
+                color: #f0f0f0;
+            }
+            QLabel, QPushButton, QCheckBox, QComboBox, QGroupBox, QTabWidget {
+                color: #f0f0f0; 
+            }
+            QListWidget {
+                background-color: #252525;
+                color: #f0f0f0;
+                border: 1px solid #555;
+                border-radius: 4px;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d7;
+            }
+            QStatusBar {
+                background-color: #2b2b2b;
+                color: #aaa;
+            }
+
+            QWidget {
+                font-size: 15px;
+            }
+        """)
         
         # Paths
         base_dir = os.path.dirname(os.path.abspath(__file__)) # this is src/gui
         root_dir = os.path.dirname(os.path.dirname(base_dir)) # this is root
+        
+        # Set window icon
+        icon_path = os.path.join(root_dir, "icon.ico")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
         
         self.input_dir = os.path.join(root_dir, "input")
         self.temp_dir = os.path.join(root_dir, "temp")
@@ -53,7 +90,7 @@ class MainWindow(QMainWindow):
         batch_layout.setContentsMargins(10, 5, 10, 5)
         
         self.batch_label = QLabel("Batch Progress:")
-        self.batch_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        self.batch_label.setStyleSheet("font-weight: bold; font-size: 16px;")
         batch_layout.addWidget(self.batch_label)
         
         self.batch_progress = QProgressBar()
@@ -88,7 +125,7 @@ class MainWindow(QMainWindow):
         left_layout = QVBoxLayout(left_panel)
         left_panel.setFixedWidth(250)
         
-        left_layout.addWidget(QLabel("📁 Jobs"))
+        left_layout.addWidget(QLabel("Jobs"))
         self.job_list_widget = QListWidget()
         self.job_list_widget.currentRowChanged.connect(self.on_job_selected)
         left_layout.addWidget(self.job_list_widget)
@@ -124,31 +161,61 @@ class MainWindow(QMainWindow):
 
     def _setup_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
+        toolbar.setMovable(False)
         self.addToolBar(toolbar)
         
-        self.run_action = QAction("▶ Start Batch", self)
+        # Helper to load icon (custom .ico or Qt standard fallback)
+        def load_icon(name, fallback_standard):
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
+                                     "icons", f"{name}.ico")
+            if os.path.exists(icon_path):
+                return QIcon(icon_path)
+            return self.style().standardIcon(fallback_standard)
+        
+        from PySide6.QtWidgets import QStyle
+        
+        self.run_action = QAction(load_icon("play", QStyle.SP_MediaPlay), "Start Batch", self)
         self.run_action.triggered.connect(self.on_start_clicked)
         toolbar.addAction(self.run_action)
         
-        self.stop_action = QAction("■ Stop", self)
+        self.stop_action = QAction(load_icon("stop", QStyle.SP_MediaStop), "Stop", self)
         self.stop_action.setEnabled(False)
         self.stop_action.triggered.connect(self.on_stop_clicked)
         toolbar.addAction(self.stop_action)
         
-        self.skip_action = QAction("⏭ Skip Current", self)
+        self.skip_action = QAction(load_icon("skip", QStyle.SP_MediaSkipForward), "Skip", self)
         self.skip_action.setEnabled(False)
         self.skip_action.triggered.connect(self.on_skip_clicked)
         toolbar.addAction(self.skip_action)
         
         toolbar.addSeparator()
         
-        self.refresh_action = QAction("🔄 Refresh", self)
+        self.refresh_action = QAction(load_icon("refresh", QStyle.SP_BrowserReload), "Refresh", self)
         self.refresh_action.triggered.connect(self.on_refresh_clicked)
         toolbar.addAction(self.refresh_action)
         
         toolbar.addSeparator()
         
-        self.exit_action = QAction("❌ Exit", self)
+        # Config file buttons
+        self.edit_config_action = QAction(load_icon("config", QStyle.SP_FileDialogDetailedView), "Config", self)
+        self.edit_config_action.setToolTip("Edit analysis/mesh config (config.yaml)")
+        self.edit_config_action.triggered.connect(self.on_edit_config_clicked)
+        toolbar.addAction(self.edit_config_action)
+        
+        self.edit_material_action = QAction(load_icon("material", QStyle.SP_FileDialogInfoView), "Material", self)
+        self.edit_material_action.setToolTip("Edit material properties (material.yaml)")
+        self.edit_material_action.triggered.connect(self.on_edit_material_clicked)
+        toolbar.addAction(self.edit_material_action)
+        
+        toolbar.addSeparator()
+        
+        toolbar.addSeparator()
+        
+        self.about_action = QAction(load_icon("about", QStyle.SP_MessageBoxInformation), "About", self)
+        self.about_action.triggered.connect(self.on_about_clicked)
+        toolbar.addAction(self.about_action)
+
+        self.exit_action = QAction(load_icon("exit", QStyle.SP_DialogCloseButton), "Exit", self)
         self.exit_action.triggered.connect(self.on_exit_clicked)
         toolbar.addAction(self.exit_action)
 
@@ -190,6 +257,11 @@ class MainWindow(QMainWindow):
         
         # Update batch progress
         self._update_batch_progress()
+
+        if status == JobStatus.ERROR:
+            job = self.jobs[job_id]
+            err_msg = getattr(job, 'error_message', 'Unknown Error')
+            QMessageBox.critical(self, "Analysis Error", f"Job '{job.name}' Failed.\n\nError: {err_msg}")
         
         current_job_id = self._get_current_job_id()
         if current_job_id == job_id:
@@ -203,8 +275,13 @@ class MainWindow(QMainWindow):
 
     @Slot(str, str)
     def _on_job_log_added(self, job_id, line):
-        if self._get_current_job_id() == job_id:
-            self.progress_panel.append_log(line)
+        if self._get_current_job_id() == job_id: # Corrected from 'current_job_id' to 'self._get_current_job_id()'
+             self.progress_panel.append_log(line)
+
+    @Slot()
+    def on_about_clicked(self):
+        dlg = AboutDialog(self)
+        dlg.exec()
 
     def _update_batch_progress(self):
         total = len(self.jobs)
@@ -248,8 +325,7 @@ class MainWindow(QMainWindow):
             
         if job.status == JobStatus.COMPLETED:
             self.preview_stack.setCurrentWidget(self.result_panel)
-            res_base = os.path.join(self.result_dir, job.name)
-            self.result_panel.load_result(res_base)
+            self.result_panel.load_result(job.name, self.result_dir, self.temp_dir)
             
         elif job.status == JobStatus.RUNNING:
             self.preview_stack.setCurrentWidget(self.progress_panel)
@@ -257,12 +333,8 @@ class MainWindow(QMainWindow):
             
         else:
             self.preview_stack.setCurrentWidget(self.mesh_panel)
-            vtk_path = os.path.join(self.temp_dir, f"{job.name}.vtk")
-            if os.path.exists(vtk_path):
-                self.mesh_panel.load_mesh(vtk_path)
-            else:
-                # Show STEP geometry instead
-                self.mesh_panel.load_step(job.step_path)
+            # Always load STEP for pre-analysis/pending jobs
+            self.mesh_panel.load_step(job.step_path)
 
     def on_start_clicked(self):
         self.run_action.setEnabled(False)
@@ -281,6 +353,24 @@ class MainWindow(QMainWindow):
 
     def on_refresh_clicked(self):
         self._init_existing_jobs()
+
+    def on_edit_config_clicked(self):
+        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "config", "config.yaml")
+        self._open_in_editor(config_path)
+
+    def on_edit_material_clicked(self):
+        material_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "config", "material.yaml")
+        self._open_in_editor(material_path)
+
+    def _open_in_editor(self, file_path):
+        import subprocess
+        if os.path.exists(file_path):
+            # Windows: use notepad
+            subprocess.Popen(["notepad.exe", file_path])
+        else:
+            QMessageBox.warning(self, "File Not Found", f"Config file not found:\n{file_path}")
 
     def on_exit_clicked(self):
         self.close()

@@ -9,7 +9,7 @@ import analysis_helpers as helpers
 class AnalysisWorker(QThread):
     progress_updated = Signal(str, int, str) # job_id, progress, status_text
     log_updated = Signal(str, str)           # job_id, log_line
-    finished = Signal(str, bool)             # job_id, success
+    finished = Signal(str, bool, str)             # job_id, success, error_message
 
     def __init__(self, job: JobItem, config_path: str, temp_dir: str, result_dir: str):
         super().__init__()
@@ -27,8 +27,8 @@ class AnalysisWorker(QThread):
             self.log_updated.emit(job_id, line)
             
         def prog_cb(percent):
-            # Scale solver percentage (60-99%)
-            val = 60 + int(percent * 0.39)
+            # Scale solver percentage (20-99%)
+            val = 20 + int(percent * 0.79)
             self.progress_updated.emit(job_id, val, f"Solving ({percent}%)")
 
         try:
@@ -41,42 +41,48 @@ class AnalysisWorker(QThread):
                     sim_steps = conf.get("time_steps", sim_steps)
 
             # --- 1. Meshing ---
-            self.progress_updated.emit(job_id, 5, "Meshing...")
+            self.progress_updated.emit(job_id, 1, "Meshing...")
             vtk_path = helpers.run_meshing(self.job.step_path, self.config_path, self.temp_dir, log_callback=log_cb)
             self.job.vtk_path = vtk_path
-            self.progress_updated.emit(job_id, 30, "Mesh Complete")
+            self.progress_updated.emit(job_id, 5, "Mesh Complete")
             
             if not self._is_running: return
 
             # --- 2. Integration ---
-            self.progress_updated.emit(job_id, 40, "Preparing FEBio model...")
+            self.progress_updated.emit(job_id, 10, "Preparing FEBio model...")
             out_feb = os.path.join(self.temp_dir, f"{base_name}.feb")
             helpers.run_integration(vtk_path, helpers.DEFAULT_TEMPLATE, out_feb, push_dist, sim_steps)
             self.job.feb_path = out_feb
-            self.progress_updated.emit(job_id, 55, "Prep Complete")
+            self.progress_updated.emit(job_id, 15, "Prep Complete")
             
             if not self._is_running: return
 
             # --- 3. Solver ---
-            self.progress_updated.emit(job_id, 60, "Solving (0%)")
+            self.progress_updated.emit(job_id, 20, "Solving (0%)")
+            
+            # Callback to check if stopped/skipped from GUI thread
+            def check_stop():
+                return not self._is_running
+
             success = helpers.run_solver_and_extract(
                 out_feb, self.result_dir, 
                 log_callback=log_cb, 
-                progress_callback=prog_cb
+                progress_callback=prog_cb,
+                check_stop_callback=check_stop
             )
             
             if success:
                 self.progress_updated.emit(job_id, 100, "Completed")
-                self.finished.emit(job_id, True)
+                self.finished.emit(job_id, True, "")
             else:
                 self.progress_updated.emit(job_id, 100, "Error")
-                self.finished.emit(job_id, False)
+                self.finished.emit(job_id, False, "Solver failed (check log)")
 
         except Exception as e:
             msg = f"Worker Error: {str(e)}"
             self.log_updated.emit(job_id, msg)
             self.progress_updated.emit(job_id, 100, "Failed")
-            self.finished.emit(job_id, False)
+            self.finished.emit(job_id, False, str(e))
 
     def stop(self):
         self._is_running = False
@@ -87,7 +93,7 @@ class AnalysisWorker(QThread):
         # Emit skipped status
         self.log_updated.emit(self.job.id, ">>> Skipped by user")
         self.progress_updated.emit(self.job.id, 100, "Skipped")
-        self.finished.emit(self.job.id, False)
+        self.finished.emit(self.job.id, False, "Skipped by user")
 
 class JobManager(QObject):
     job_added = Signal(JobItem)
@@ -181,8 +187,8 @@ class JobManager(QObject):
             self.jobs[job_id].log_lines.append(line)
             self.log_added.emit(job_id, line)
 
-    @Slot(str, bool)
-    def _on_worker_finished(self, job_id, success):
+    @Slot(str, bool, str)
+    def _on_worker_finished(self, job_id, success, error_message=""):
         if job_id in self.jobs:
             job = self.jobs[job_id]
             if hasattr(self.worker, '_skipped') and self.worker._skipped:
@@ -191,6 +197,7 @@ class JobManager(QObject):
                 job.status = JobStatus.COMPLETED
             else:
                 job.status = JobStatus.ERROR
+                job.error_message = error_message
             self.status_changed.emit(job_id, job.status)
         
         if self._batch_running:

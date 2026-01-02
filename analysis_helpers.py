@@ -163,7 +163,7 @@ def run_integration(vtk_path, template, out_feb, push_dist_override=None, steps=
 
     return out_feb 
 
-def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=None, log_callback=None, progress_callback=None):
+def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=None, log_callback=None, progress_callback=None, check_stop_callback=None):
     base_name = os.path.splitext(os.path.basename(feb_path))[0]
     
     env = os.environ.copy()
@@ -193,6 +193,11 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
             proc = subprocess.Popen(cmd, env=env, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
             
             for line in proc.stdout:
+                # Check external stop request (GUI)
+                if check_stop_callback and check_stop_callback():
+                    proc.kill()
+                    return False
+
                 f_log.write(line) 
                 if log_callback:
                     log_callback(line.strip())
@@ -239,6 +244,8 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
         if str(e) != "SkipJob": raise e
         return False
     finally:
+        if proc and proc.poll() is None:
+            proc.kill()
         if solver_bar: solver_bar.close()
 
     
