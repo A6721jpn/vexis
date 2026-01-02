@@ -51,14 +51,21 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Paths
-        base_dir = os.path.dirname(os.path.abspath(__file__)) # this is src/gui
-        root_dir = os.path.dirname(os.path.dirname(base_dir)) # this is root
+        import sys
         
-        # Set window icon
-        icon_path = os.path.join(root_dir, "icon.ico")
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
+        # Paths
+        if getattr(sys, 'frozen', False):
+            # Running as compiled EXE
+            root_dir = os.path.dirname(sys.executable)
+        else:
+            # Running as Python script
+            base_dir = os.path.dirname(os.path.abspath(__file__)) # this is src/gui
+            root_dir = os.path.dirname(os.path.dirname(base_dir)) # this is root
+        
+        # Set window icon (Delegated to QApplication in gui_main.py)
+        # icon_path = os.path.join(root_dir, "icon.ico")
+        # if os.path.exists(icon_path):
+        #     self.setWindowIcon(QIcon(icon_path))
         
         self.input_dir = os.path.join(root_dir, "input")
         self.temp_dir = os.path.join(root_dir, "temp")

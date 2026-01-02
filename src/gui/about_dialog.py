@@ -28,8 +28,15 @@ class AboutDialog(QDialog):
         layout = QVBoxLayout(self)
         
         # Logo Area
+        # Logo Area
         logo_label = QLabel()
-        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
+        import sys
+        if getattr(sys, 'frozen', False):
+            root_dir = os.path.dirname(sys.executable)
+        else:
+            root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            
         logo_path = os.path.join(root_dir, "doc", "VEXIS-CAE-LOGO-LARGE.png")
         
         if os.path.exists(logo_path):

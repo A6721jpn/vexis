@@ -2,15 +2,15 @@ import lxml.etree as ET
 import numpy as np
 try:
     from .set_reconstructor import SetReconstructor
-    print("Imported SetReconstructor from relative path")
+    # print("Imported SetReconstructor from relative path")
 except ImportError as e1:
     try:
         from mesh_swap_automation.set_reconstructor import SetReconstructor
-        print("Imported SetReconstructor from absolute package path")
+        # print("Imported SetReconstructor from absolute package path")
     except ImportError as e2:
         try:
             from set_reconstructor import SetReconstructor
-            print("Imported SetReconstructor from global path")
+            # print("Imported SetReconstructor from global path")
         except ImportError as e3:
             print(f"FAILED to import SetReconstructor. Errors: {e1}, {e2}, {e3}")
             pass
