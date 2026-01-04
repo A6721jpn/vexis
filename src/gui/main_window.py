@@ -23,33 +23,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("VEXIS-CAE - Automatic Rubberdome Analyzer")
         self.resize(1100, 700)
         
-        # Apply Dark Theme
-        self.setStyleSheet("""
-            QMainWindow, QDialog {
-                background-color: #202020;
-                color: #f0f0f0;
-            }
-            QLabel, QPushButton, QCheckBox, QComboBox, QGroupBox, QTabWidget {
-                color: #f0f0f0; 
-            }
-            QListWidget {
-                background-color: #252525;
-                color: #f0f0f0;
-                border: 1px solid #555;
-                border-radius: 4px;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d7;
-            }
-            QStatusBar {
-                background-color: #2b2b2b;
-                color: #aaa;
-            }
-
-            QWidget {
-                font-size: 15px;
-            }
-        """)
+        # Stylesheet is now loaded globally via src/gui/styles/dark_theme.qss
         
         import sys
         

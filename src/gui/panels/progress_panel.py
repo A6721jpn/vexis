@@ -25,7 +25,7 @@ class ProgressPanel(QWidget):
         layout.addWidget(QLabel("Logs:"))
         self.log_area = QPlainTextEdit()
         self.log_area.setReadOnly(True)
-        self.log_area.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospace;")
+        # Style moved to QSS
         layout.addWidget(self.log_area)
 
     def set_job_info(self, name, status_text, progress):

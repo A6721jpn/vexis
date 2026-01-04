@@ -68,6 +68,16 @@ def main():
     
     app = QApplication(sys.argv)
     
+    # --- Load Stylesheet (QSS) ---
+    qss_path = resolve_path(os.path.join("src", "gui", "styles", "dark_theme.qss"))
+    if os.path.exists(qss_path):
+        with open(qss_path, "r", encoding="utf-8") as f:
+            app.setStyleSheet(f.read())
+            # print(f"[style] Loaded QSS: {qss_path}")
+    else:
+        # print(f"[style] Warning: QSS not found at {qss_path}")
+        pass
+    
     # --- Resolve Paths & Multi-size Icon Loading ---
     # マルチサイズ対応のマスターICOファイルを優先的に読み込む
     master_icon_path = resolve_path(os.path.join("src", "icons", "icon.ico"))
@@ -75,7 +85,7 @@ def main():
     
     if os.path.exists(master_icon_path):
         app_icon = QIcon(master_icon_path)
-        print(f"[icon] Loaded master icon: {master_icon_path}")
+        # print(f"[icon] Loaded master icon: {master_icon_path}")
     else:
         # 以前のディレクトリ内スキャンをフォールバックとして残す
         icon_dir = resolve_path(os.path.normpath("src/icons"))
@@ -89,14 +99,14 @@ def main():
         icon_path = resolve_path("icon.ico")
         if os.path.exists(icon_path):
             app_icon = QIcon(icon_path)
-            print("[icon] Fallback to root icon.ico")
+            # print("[icon] Fallback to root icon.ico")
 
     icon_status = "Not Found"
     if not app_icon.isNull():
         app.setWindowIcon(app_icon)
         icon_status = f"Loaded ({len(app_icon.availableSizes())} sizes)"
-        print(f"[icon] Final Status: {icon_status}")
-        print(f"[icon] Sizes: {app_icon.availableSizes()}")
+        # print(f"[icon] Final Status: {icon_status}")
+        # print(f"[icon] Sizes: {app_icon.availableSizes()}")
     else:
         # Final fallback to logo PNG
         logo_path = resolve_path(os.path.join("doc", "VEXIS-CAE-LOGO-LARGE.png"))
