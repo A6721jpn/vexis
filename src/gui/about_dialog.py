@@ -14,6 +14,20 @@ ABOUT_TEXT_TEMPLATE = """
 <p><b>License:</b> {license}</p>
 <p><b>Developer:</b> {author}</p>
 <p>Please reach out to me if you find any bugs.</p>
+<hr>
+<p>Icons by <b>Iconoir</b> Licensed under the MIT License</p>
+<p>https://iconoir.com</p>
+<p>Solver by <b>FEBio</b> licensed under the MIT License</p>
+<p>https://www.febio.org</p>
+<p><b>PySide6 (Qt)</b> - LGPL v3<br>
+Copyright (C) The Qt Company Ltd.</p>
+<p><b>Gmsh</b> - GNU GPL v2+<br>
+Copyright (C) 1997-2024 C. Geuzaine and J.-F. Remacle</p>
+<p><b>NumPy & Pandas</b> - BSD 3-Clause<br>
+Copyright (c) NumPy Developers & The Pandas Development Team</p>
+<p><b>Matplotlib</b> - PSF License<br>
+Copyright (c) 2002-2012 John D. Hunter. All Rights Reserved.</p>
+
 """
 # ==========================================
 
