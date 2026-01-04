@@ -1,46 +1,54 @@
 # VEXIS CAE
-![Force-Stroke Graph Example](doc/VEXIS-CAE-LOGO-LARGE.png)
-VEXIS CAE is an automated Finite Element Analysis (FEA) pipeline designed for large-deformation and buckling simulations of rubber dome, typically for membrane keyboard. It streamlines the workflow from raw CAD models(.step) to analyzed simulation results.
+![Force-Stroke Graph Example](doc/VEXIS-CAE-LOGO-LARGE_black.png)
+
+VEXIS CAE is an automated Finite Element Analysis (FEA) pipeline designed for large-deformation and buckling simulations of rubber dome, typically for membrane keyboard. It streamlines the workflow from raw CAD models (.step) to analyzed simulation results.
 
 This software is licensed under the [GNU GPL v3](LICENSE).
 
 ## Key Features
 
-- **Adaptive Mesh Generation**: Automatically creates high-quality hybrid meshes (Hex/Tet) from STEP files using a butterfly O-grid algorithm to ensure convergence during buckling.
-- **FEBio Integration**: Seamlessly handles FEBio input file generation, mesh swapping, and solver execution.
-- **Real-time Monitoring**: Features interactive progress bars for monitoring meshing and solver status.
-- **Thread Control**: Configurable CPU thread allocation via `config.yaml` to balance performance and system load.
-- **Result Extraction**: Automatically parses FEBio results to generate Force-Displacement curves (`.csv`) and visual plots (`.png`).
+- **Adaptive Mesh Generation**: Automatically creates high-quality hybrid meshes (Hex/Tet) from STEP files.
+- **Modern GUI**: A polished, dark-themed interface built with PySide6.
+    - **Live Preview**: Intearctive 3D visualization of mesh and simulation results.
+    - **Real-time Monitoring**: Track solver progress and batch status visually.
+- **Robustness**:
+    - **Crash Handler**: Catches and logs unexpected errors safely.
+    - **Logging**: Automatic file logging to `logs/` directory for troubleshooting.
+- **FEBio Integration**: Seamlessly handles mesh swapping and solver execution.
+- **Result Extraction**: Generates Force-Displacement curves (`.csv`) and plots (`.png`).
 
 ## Core Workflow
 
-1.  **Input**: Place `.stp` or `.step` files in the `input/` directory.
+1.  **Input**: Place `.stp` or `.step` files in the `input/` directory (or drag & drop in GUI).
 2.  **Meshing**: The system converts CAD geometry into a `.vtk` mesh optimized for stability.
-3.  **Preparation**: The new mesh is injected into a `template.feb` file, with automatic reconstruction of boundary conditions and contact surfaces.
+3.  **Preparation**: The new mesh is injected into a `template.feb` file with automatic reconstruction.
 4.  **Solver**: Executes the FEBio solver with real-time feedback.
-5.  **Output**: Simulation results are saved in the `results/` directory.
-Results are consisted Force-Stroke graph (.PNG), its data (.csv) and solver log (.log) for validation. 
+5.  **Output**: Simulation results (Graph PNG, CSV Data, Log) are saved in `results/`.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.9+
-- [FEBio Studio](https://febio.org/) (FEBio4 solver)
-- Required Python packages: `felupe`, `gmsh`, `meshio`, `lxml`, `pyyaml`, `tqdm`
+- Windows OS
+- [FEBio Studio](https://febio.org/) (FEBio4 solver installed and in PATH)
 
-### Quick Start
+### Quick Start (GUI)
 
-1.  Place your CAD file in `input/`.
-2.  Configure your analysis parameters in `config.yaml`.
-3.  Run the main controller:
+1.  Run the application:
     ```bash
-    python main.py
+    python gui_main.py
     ```
+    *(Or launch the built `VEXIS-CAE.exe`)*
+2.  Place your CAD file (`.stp`) in the `input/` folder. It will appear in the job list automatically.
+3.  Click **Start Batch** to begin analysis.
+4.  Once complete, select the job to view the **Force-Stroke Graph** and **3D Results**.
 
-**Advanced Options:**
-- `python main.py --mesh-only`: Performs only mesh generation (generation of `.vtk` in `temp/`).
-- `python main.py --skip-mesh`: Skips meshing and runs the analysis using the existing mesh in the `temp/` folder (useful for resuming or re-running solver).
+### Quick Start (CLI)
+
+For headless automation:
+```bash
+python main.py
+```
 
 ## Documentation
 
@@ -50,4 +58,4 @@ For more detailed information, please refer to the following documents:
 ---
 *Vexis is currently optimized for rubber keycap buckling analysis.*
 
-Copyright (c) 2024-2025 PK6721
+Copyright (c) 2024-2025 A.O.
