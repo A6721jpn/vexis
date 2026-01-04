@@ -26,7 +26,7 @@ def generate_adaptive_mesh(config_path: str, stp_path: str, output_path: str | N
 
     if output_path is None:
         name = os.path.splitext(os.path.basename(config_path))[0]
-        output_path = f"output/{name}_o_grid.{cfg.output_format}"
+        output_path = f"output/{name}_o_grid.vtk"
 
     # 1) Analyze geometry and build 2D quad mesh of the outer ring (in original coordinates)
     split = analyze_geometry_and_split(

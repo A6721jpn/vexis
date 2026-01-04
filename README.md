@@ -46,9 +46,8 @@ Results are consisted Force-Stroke graph (.PNG), its data (.csv) and solver log 
 
 For more detailed information, please refer to the following documents:
 - [User Guide](doc/user_guide.html): General usage and troubleshooting.
-- [Development Guide](doc/Development_Guide_v04.md): Architecture and technical implementation details.
 
 ---
 *Vexis is currently optimized for rubber keycap buckling analysis.*
 
-Copyright (c) 2024-2025 PK
+Copyright (c) 2024-2025 PK6721

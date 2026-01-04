@@ -4,22 +4,52 @@ import time
 from tqdm import tqdm
 import analysis_helpers as helpers
 
-# Paths relative to VEXIS-CAE/
-# Default paths relative to VEXIS-CAE  /
-INPUT_DIR = "input"
-TEMP_DIR = "temp"
-RESULT_DIR = "results"
-CONFIG_FILE = os.path.join(INPUT_DIR, "config.yaml")
+# Paths relative to the executable or script location
+if getattr(sys, 'frozen', False):
+    # Running as compiled EXE
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # Running as Python script
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+INPUT_DIR = os.path.join(BASE_DIR, "input")
+CONFIG_DIR = os.path.join(BASE_DIR, "config")
+TEMP_DIR = os.path.join(BASE_DIR, "temp")
+RESULT_DIR = os.path.join(BASE_DIR, "results")
+
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.yaml")
+MATERIAL_CONFIG = os.path.join(CONFIG_DIR, "material.yaml")
+DEFAULT_TEMPLATE = os.path.join(BASE_DIR, "template2.feb")
 
 def main():
     parser = argparse.ArgumentParser(description="VEXIS-CAE Auto Analysis Workflow")
     parser.add_argument("--mesh-only", action="store_true", help="Only run mesh generation, skip analysis.")
     parser.add_argument("--skip-mesh", action="store_true", help="Skip mesh generation, use existing .vtk in temp/ (matches step filename).")
+    
+    # Internal hidden arguments for meshing subprocess (frozen EXE support)
+    parser.add_argument("--run-mesh-gen", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--internal-config", help=argparse.SUPPRESS)
+    parser.add_argument("--internal-stp", help=argparse.SUPPRESS)
+    parser.add_argument("--internal-out", help=argparse.SUPPRESS)
+    
     args = parser.parse_args()
+
+    # 0. Internal Mesh Generation Mode
+    if args.run_mesh_gen:
+        from src.mesh_gen.main import generate_adaptive_mesh
+        generate_adaptive_mesh(args.internal_config, args.internal_stp, args.internal_out)
+        return
 
     steps = glob.glob(os.path.join(INPUT_DIR, "*.stp")) + glob.glob(os.path.join(INPUT_DIR, "*.step"))
     
-    print(f"--- Auto Analysis Workflow (VEXIS-CAE) ---")
+    # Show Logo using 'art' library
+    try:
+        from art import text2art
+        print(text2art("VEXIS - CAE", font="doom").rstrip() + "\n")
+    except ImportError:
+        print("--- VEXIS-CAE Analysis Workflow ---")
+    
+    print(f"--- Auto Analysis Workflow ---")
     print(f"Target Files: {len(steps)} | Mode: {'Mesh-Only' if args.mesh_only else 'Skip-Mesh' if args.skip_mesh else 'Full'}")
     print(f"Controls: [s] = Skip current job, [Ctrl+C] = Stop all")
 
@@ -37,10 +67,10 @@ def main():
             
             try:
                 # --- CONFIG & PATHS ---
-                material_yaml = os.path.join(INPUT_DIR, "material.yaml")
+                material_yaml = MATERIAL_CONFIG
                 mesh_config_path = CONFIG_FILE
                 push_dist, sim_steps, mat_name, num_threads = None, 20, None, None
-                template_feb = "template2.feb" # Default fallback
+                template_feb = DEFAULT_TEMPLATE
                 febio_path = None # Will use helper default if not in config
 
                 if os.path.exists(CONFIG_FILE):
@@ -85,6 +115,10 @@ def main():
                 tqdm.write(f"\n! ERROR in {base_name}: {e}")
 
     print(f"\nWorkflow Completed.")
+    try:
+        input("\nPress Enter to exit...")
+    except (EOFError, KeyboardInterrupt):
+        pass
 
 if __name__ == "__main__":
     main()

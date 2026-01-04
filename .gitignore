@@ -6,6 +6,11 @@ Thumbs.db
 .vscode/
 .idea/
 
+#Under development
+plugins/
+!plugins/advanced_mesher/
+!plugins/Development_plan_mesh_gen_FElupe.md
+
 # =========================================================
 # FEBio (Finite Elements for Biomechanics)
 # =========================================================
@@ -34,6 +39,10 @@ Thumbs.db
 # --- FEBio auto-generated folders ---
 job/
 results/
+<<<<<<< HEAD
+=======
+temp/
+>>>>>>> AG-GUI
 
 # --- Visualization / post files ---
 *.vtk
@@ -104,6 +113,9 @@ dist/
 *.egg-info/
 .eggs/
 pip-wheel-metadata/
+build.py
+*.spec
+icon.ico
 
 # --- Test / coverage ---
 .pytest_cache/

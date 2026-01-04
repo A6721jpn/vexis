@@ -1,0 +1,181 @@
+/* =========================================================
+   VEXIS-CAE Theme v0.1 (Layout/Widgets unchanged)
+   - Dark base + Neon accents
+   - Works with existing widgets: QMainWindow, QListWidget,
+     QPushButton, QProgressBar, QPlainTextEdit, QStatusBar
+   ========================================================= */
+
+/* ---------- Global ---------- */
+* {
+    font-size: 14px;
+    color: #EAF2FF; /* primary text */
+}
+
+QMainWindow, QDialog {
+    background-color: #0B0F14; /* BG-0 */
+    color: #EAF2FF;
+}
+
+/* ---------- Generic Panels (if you use QFrame/QGroupBox anywhere) ---------- */
+QGroupBox, QFrame {
+    background-color: #101720; /* BG-1 */
+    border: 1px solid #243244; /* Border */
+    border-radius: 10px;
+}
+
+/* ---------- Labels ---------- */
+QLabel {
+    background: transparent;
+    border: none;
+    padding: 0px;
+    border-radius: 0px;
+}
+
+/* ---------- Buttons ---------- */
+QPushButton {
+    background-color: #141E2A; /* BG-2 */
+    border: 1px solid #243244;
+    border-radius: 10px;
+    padding: 8px 12px;
+    color: #EAF2FF;
+}
+
+QPushButton:hover {
+    background-color: #162335;
+    border: 1px solid #2EE7FF; /* Neon-Cyan */
+}
+
+QPushButton:pressed {
+    background-color: #101C2B;
+    border: 1px solid #8B5CFF; /* Neon-Purple */
+}
+
+QPushButton:disabled {
+    color: #6F8098;
+    background-color: #0E151E;
+    border: 1px solid #1A2636;
+}
+
+/* ---------- List (Jobs) ---------- */
+QListWidget {
+    background-color: #101720;
+    color: #EAF2FF;
+    border: 1px solid #243244;
+    border-radius: 5px;
+    padding: 6px;
+}
+
+QListWidget::item {
+    padding: 8px 10px;
+    margin: 3px 2px;
+    border-radius: 3px;
+}
+
+QListWidget::item:hover {
+    background-color: #141E2A;
+    border: 1px solid #243244;
+}
+
+QListWidget::item:selected {
+    background-color: #162335;
+    border: 1px solid #2EE7FF;  /* neon selection */
+    color: #EAF2FF;
+}
+
+/* ---------- Progress Bar ---------- */
+QProgressBar {
+    text-align: center;
+    font-weight: 800;
+    color: #A9B7CC;          /* バー上でも読める濃色に固定 */
+    background-color: #0E151E;
+    border: 1px solid #243244;
+    border-radius: 8px;
+    height: 14px;
+}
+
+QProgressBar::chunk {
+    background-color: #2EE7FF;
+    border-radius: 7px;
+}
+
+/* ---------- Log Area ---------- */
+QPlainTextEdit {
+    background-color: #0E151E;
+    color: #D6E2F5;
+    font-family: Consolas, monospace;
+    border: 1px solid #243244;
+    border-radius: 10px;
+    padding: 10px;
+    selection-background-color: #8B5CFF;
+    selection-color: #0B0F14;
+}
+
+/* ---------- Status Bar ---------- */
+QStatusBar {
+    background-color: #101720;
+    color: #6F8098;
+    border-top: 1px solid #243244;
+}
+
+QStatusBar::item {
+    border: none;
+}
+
+/* ---------- Scrollbars ---------- */
+QScrollBar:vertical {
+    background: #0B0F14;
+    width: 12px;
+    margin: 2px;
+    border-radius: 6px;
+}
+QScrollBar::handle:vertical {
+    background: #243244;
+    min-height: 30px;
+    border-radius: 6px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #2EE7FF;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar:horizontal {
+    background: #0B0F14;
+    height: 12px;
+    margin: 2px;
+    border-radius: 6px;
+}
+QScrollBar::handle:horizontal {
+    background: #243244;
+    min-width: 30px;
+    border-radius: 6px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: #8B5CFF;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0px;
+}
+
+/* ---------- Tooltip ---------- */
+QToolTip {
+    background-color: #101720;
+    color: #EAF2FF;
+    border: 1px solid #2EE7FF;
+    border-radius: 8px;
+    padding: 6px 8px;
+}
+
+/* Remove dotted focus rectangle in list items */
+QListWidget {
+    outline: 0;              /* kills focus rect in many styles */
+}
+
+QListWidget::item:focus {
+    outline: none;           /* Qt6でも効くことが多い */
+}
+
+QListWidget::item:selected:focus {
+    outline: none;
+}

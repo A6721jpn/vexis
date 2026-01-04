@@ -2,15 +2,15 @@ import lxml.etree as ET
 import numpy as np
 try:
     from .set_reconstructor import SetReconstructor
-    print("Imported SetReconstructor from relative path")
+    # print("Imported SetReconstructor from relative path")
 except ImportError as e1:
     try:
         from mesh_swap_automation.set_reconstructor import SetReconstructor
-        print("Imported SetReconstructor from absolute package path")
+        # print("Imported SetReconstructor from absolute package path")
     except ImportError as e2:
         try:
             from set_reconstructor import SetReconstructor
-            print("Imported SetReconstructor from global path")
+            # print("Imported SetReconstructor from global path")
         except ImportError as e3:
             print(f"FAILED to import SetReconstructor. Errors: {e1}, {e2}, {e3}")
             pass
@@ -93,44 +93,29 @@ def replace_mesh(tree, new_nodes, new_elements, part_name, elem_type="hex8"):
     if reconstructor:
        existing_names = set(d["name"] for d in reconstructor.set_definitions)
     
-    # Rule 1: Bottom Contact Primary (Bottom face excluding absolute bottom)
-    target = "RUBBER_BOTTOM_CONTACTPrimary"
-    # Keeping this if it was already there or just as a specific fix for bottom contact if needed.
-    # But user asked to remove "forced rules" for self-contact specifically.
-    # The previous code for Rule 1 was pre-existing in my view of file? 
-    # Viewing Step 11: Rule 1 was there (lines 96-109). Rule 2 and 3 were what I touched.
-    # I should revert lines 111-132 roughly.
-    
-    # Original state of Rule 1 was enforcing it. I will keep Rule 1 as is if it's not the problem.
-    # But I must remove Rule 2 and 3 blocks entirely.
+       # Rule 1: Bottom Contact Primary (Bottom face excluding absolute bottom)
+       target = "RUBBER_BOTTOM_CONTACTPrimary"
+       reconstructor.set_definitions = [d for d in reconstructor.set_definitions if d["name"] != target]
+       
+       print(f"Enforcing surface definition: {target} (z_down_except_bottom)")
+       reconstructor.set_definitions.append({
+           "type": "Surface",
+           "name": target,
+           "strategy": "GeometricRule",
+           "rule": "z_down_except_bottom"
+       })
 
-
-    # Rule 1: Bottom Contact Primary (Bottom face excluding absolute bottom)
-    target = "RUBBER_BOTTOM_CONTACTPrimary"
-    
-    # Remove existing definition if present to avoid duplicates
-    reconstructor.set_definitions = [d for d in reconstructor.set_definitions if d["name"] != target]
-    
-    print(f"Enforcing surface definition: {target} (z_down_except_bottom)")
-    reconstructor.set_definitions.append({
-        "type": "Surface",
-        "name": target,
-        "strategy": "GeometricRule",
-        "rule": "z_down_except_bottom"
-    })
-
-    # Rule 2: Top Contact Primary (Top face)
-    # This prevents the keycap from penetrating the rubber
-    target_top = "TOP_CONTACTPrimary"
-    reconstructor.set_definitions = [d for d in reconstructor.set_definitions if d["name"] != target_top]
-    
-    print(f"Enforcing surface definition: {target_top} (z_up)")
-    reconstructor.set_definitions.append({
-        "type": "Surface",
-        "name": target_top,
-        "strategy": "GeometricRule",
-        "rule": "z_up"
-    })
+       # Rule 2: Top Contact Primary (Top face)
+       target_top = "TOP_CONTACTPrimary"
+       reconstructor.set_definitions = [d for d in reconstructor.set_definitions if d["name"] != target_top]
+       
+       print(f"Enforcing surface definition: {target_top} (z_up)")
+       reconstructor.set_definitions.append({
+           "type": "Surface",
+           "name": target_top,
+           "strategy": "GeometricRule",
+           "rule": "z_up"
+       })
 
     # 1. Find target Nodes section
     target_nodes_node = None
