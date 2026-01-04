@@ -15,10 +15,10 @@ ABOUT_TEXT_TEMPLATE = """
 <p><b>Developer:</b> {author}</p>
 <p>Please reach out to me if you find any bugs.</p>
 <hr>
-<p>Icons by <b>Iconoir</b> Licensed under the MIT License</p>
-<p>https://iconoir.com</p>
-<p>Solver by <b>FEBio</b> licensed under the MIT License</p>
-<p>https://www.febio.org</p>
+<p>Icons by <b>Iconoir</b> Licensed under the MIT License<br>
+https://iconoir.com</p>
+<p>Solver by <b>FEBio</b> licensed under the MIT License<br>
+https://www.febio.org</p>
 <p>GUI by <b>PySide6 (Qt)</b> - LGPL v3<br>
 Copyright (C) The Qt Company Ltd.</p>
 <p>Mesher by <b>Gmsh</b> - GNU GPL v2+<br>

@@ -11,12 +11,22 @@ class DualLogger:
         self.log = open(filename, "a", encoding="utf-8")
 
     def write(self, message):
-        self.terminal.write(message)
+        if self.terminal:
+            try:
+                self.terminal.write(message)
+            except AttributeError:
+                pass # Terminal might be None or detached in --noconsole
+        
+        # Always write to file
         self.log.write(message)
         self.log.flush()
 
     def flush(self):
-        self.terminal.flush()
+        if self.terminal:
+            try:
+                self.terminal.flush()
+            except AttributeError:
+                pass
         self.log.flush()
 
 def setup_logging():
