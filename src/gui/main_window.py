@@ -1,6 +1,8 @@
 import os
+import sys # Added for frozen check
+import glob
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QListWidget, QListWidgetItem, QStackedWidget, 
+                             QDockWidget, QListWidget, QListWidgetItem, QStackedWidget, 
                              QPushButton, QLabel, QProgressBar, QStatusBar,
                              QToolBar, QApplication, QMessageBox)
 from PySide6.QtCore import Qt, Signal, Slot
@@ -148,11 +150,16 @@ class MainWindow(QMainWindow):
         # Helper to load icon (custom .ico or Qt standard fallback)
         # Helper to load icon (custom .ico/.svg or Qt standard fallback)
         def load_icon(name, fallback_standard):
-            # src/gui/main_window.py -> src/
-            base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if getattr(sys, "frozen", False):
+                # Frozen: Resources are copied to 'src/icons' next to the executable
+                # build.py copies 'src/icons' to dist/VEXIS-CAE/src/icons
+                icon_dir = os.path.join(os.path.dirname(sys.executable), "src", "icons")
+            else:
+                # Dev: src/gui/main_window.py -> src/ -> src/icons
+                icon_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
             
             # Priority 1: SVG (Vector) - Dynamic Recoloring
-            svg_path = os.path.join(base_path, "icons", f"{name}.svg")
+            svg_path = os.path.join(icon_dir, f"{name}.svg")
             if os.path.exists(svg_path):
                 try:
                     with open(svg_path, "r", encoding="utf-8") as f:
@@ -183,7 +190,7 @@ class MainWindow(QMainWindow):
                     print(f"SVG load error for {name}: {e}")
 
             # Priority 2: ICO (Legacy)
-            ico_path = os.path.join(base_path, "icons", f"{name}.ico")
+            ico_path = os.path.join(icon_dir, f"{name}.ico")
             if os.path.exists(ico_path):
                 return QIcon(ico_path)
             
