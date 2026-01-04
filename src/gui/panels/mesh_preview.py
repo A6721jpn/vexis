@@ -62,7 +62,7 @@ class MeshPreview(QWidget):
         
         self.placeholder = QLabel("Geometry Preview\n(Select a job)")
         self.placeholder.setAlignment(Qt.AlignCenter)
-        self.placeholder.setStyleSheet("background-color: #2d2d2d; color: #888;")
+        self.placeholder.setStyleSheet("background-color: #0B0F14; color: #6F8098;")
         self.layout.addWidget(self.placeholder)
 
     def _init_plotter(self):
@@ -76,8 +76,9 @@ class MeshPreview(QWidget):
         self.placeholder.hide()
         self.plotter = QtInteractor(self)
         self.layout.addWidget(self.plotter)
-        # Gray gradient background
-        self.plotter.set_background("dimgray", top="lightgray")
+        self.layout.addWidget(self.plotter)
+        # Deep Dark Gradient Background (matches QSS Theme)
+        self.plotter.set_background("#0B0F14", top="#141E2A")
 
     def load_mesh(self, vtk_path):
         """Load mesh file for preview."""
@@ -142,7 +143,7 @@ class MeshPreview(QWidget):
             self.plotter.clear()
             
             # Show surface without mesh lines
-            self.plotter.add_mesh(mesh, show_edges=False, color="orange", opacity=1.0)
+            self.plotter.add_mesh(mesh, show_edges=False, color="#5C7C99", opacity=1.0)
             
             # Extract and show only feature edges (outer boundary and sharp edges)
             edges = mesh.extract_feature_edges(
@@ -152,10 +153,10 @@ class MeshPreview(QWidget):
                 non_manifold_edges=False,
                 feature_angle=30
             )
-            self.plotter.add_mesh(edges, color="black", line_width=2, 
+            self.plotter.add_mesh(edges, color="#2EE7FF", line_width=2, 
                                   render_points_as_spheres=False, point_size=0)
             
-            self.plotter.add_text("STEP Geometry", position='upper_left', font_size=10, color='black')
+            self.plotter.add_text("STEP Geometry", position='upper_left', font_size=10, color='white')
             self.plotter.reset_camera()
         except Exception as e:
             print(f"STEP Preview Error: {e}")

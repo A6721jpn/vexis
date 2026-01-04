@@ -4,6 +4,7 @@ import argparse
 from PySide6.QtWidgets import QApplication
 
 from PySide6.QtGui import QIcon
+import PySide6.QtSvg # Force load SVG plugin
 
 def resolve_path(relative_path):
     """

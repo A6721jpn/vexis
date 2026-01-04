@@ -50,7 +50,8 @@ class ResultViewer(QWidget):
         self.graph_scroll.setWidgetResizable(True)
         self.graph_label = QLabel("No graph available")
         self.graph_label.setAlignment(Qt.AlignCenter)
-        self.graph_label.setStyleSheet("background-color: white;")
+        self.graph_label.setStyleSheet("background-color: #0B0F14; color: #6F8098")
+        self.graph_label.setScaledContents(True) # Allow scaling
         self.graph_scroll.setWidget(self.graph_label)
         graph_layout.addWidget(self.graph_scroll)
         
@@ -80,7 +81,7 @@ class ResultViewer(QWidget):
         # PyVista Plotter
         self.placeholder_3d = QLabel("Select a completed job to view 3D results")
         self.placeholder_3d.setAlignment(Qt.AlignCenter)
-        self.placeholder_3d.setStyleSheet("background-color: #3d3d3d; color: #888;")
+        self.placeholder_3d.setStyleSheet("background-color: #0B0F14; color: #6F8098;")
         self.view3d_layout.addWidget(self.placeholder_3d)
         
         # Timeline Slider
@@ -109,7 +110,7 @@ class ResultViewer(QWidget):
         self.placeholder_3d.hide()
         self.plotter = QtInteractor(self.view3d_widget)
         self.view3d_layout.insertWidget(1, self.plotter) # Insert between controls and slider
-        self.plotter.set_background("dimgray", top="lightgray")
+        self.plotter.set_background("#0B0F14", top="#141E2A")
 
     def load_result(self, job_name, result_dir, temp_dir):
         """Load both graph and 3D result for a job."""
@@ -121,8 +122,13 @@ class ResultViewer(QWidget):
         graph_path = os.path.join(result_dir, f"{job_name}_graph.png")
         if os.path.exists(graph_path):
             pixmap = QPixmap(graph_path)
-            self.graph_label.setPixmap(pixmap.scaled(
-                800, 600, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            # Scaling is handled by setScaledContents(True) combined with widget layout
+            # But setScaledContents needs the pixmap to be set.
+            # To ensure it fits nicely without initial pixelation, we can set it directly.
+            self.graph_label.setPixmap(pixmap)
+            # Note: For QScrollArea with resizable widget to scale image properly,
+            # usually requires subclassing/events, but setScaledContents does a basic job.
+            self.graph_label.adjustSize()
         else:
             self.graph_label.setText(f"Graph not found:\n{graph_path}")
         
@@ -233,20 +239,24 @@ class ResultViewer(QWidget):
         show_edges = self.wireframe_check.isChecked()
         
         # Add main mesh (surface/contour) without edges (to avoid triangulation artifacts)
+        # Add main mesh (surface/contour) without edges (to avoid triangulation artifacts)
+        # scalar_bar_args controls the legend color (white text for dark theme)
+        sb_args = dict(title_font_size=20, label_font_size=16, color="white", font_family="arial")
+        
         if current_field and current_field in fields:
-            self.plotter.add_mesh(display_mesh, scalars=current_field, cmap="jet", show_edges=False)
-            self.plotter.add_scalar_bar(title=current_field)
+            self.plotter.add_mesh(display_mesh, scalars=current_field, cmap="jet", show_edges=False,
+                                  scalar_bar_args={**sb_args, "title": current_field})
         elif fields:
             first_field = fields[0]
             self.field_combo.setCurrentText(first_field)
-            self.plotter.add_mesh(display_mesh, scalars=first_field, cmap="jet", show_edges=False)
-            self.plotter.add_scalar_bar(title=first_field)
+            self.plotter.add_mesh(display_mesh, scalars=first_field, cmap="jet", show_edges=False,
+                                  scalar_bar_args={**sb_args, "title": first_field})
         else:
             self.plotter.add_mesh(display_mesh, color="lightblue", show_edges=False)
             if is_result:
-                self.plotter.add_text("Mesh loaded (no scalar data)", position='upper_left', font_size=10)
+                self.plotter.add_text("Mesh loaded (no scalar data)", position='upper_left', font_size=10, color='white')
             else:
-                self.plotter.add_text("Mesh preview (analysis mesh)", position='upper_left', font_size=10)
+                self.plotter.add_text("Mesh preview (analysis mesh)", position='upper_left', font_size=10, color='white')
         
         # Explicitly extract and show edges to preserve Hex structure
         # (show_edges=True often shows triangulation on non-planar quads)

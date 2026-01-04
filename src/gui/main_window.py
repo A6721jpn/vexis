@@ -146,20 +146,57 @@ class MainWindow(QMainWindow):
         self.addToolBar(toolbar)
         
         # Helper to load icon (custom .ico or Qt standard fallback)
+        # Helper to load icon (custom .ico/.svg or Qt standard fallback)
         def load_icon(name, fallback_standard):
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
-                                     "icons", f"{name}.ico")
-            if os.path.exists(icon_path):
-                return QIcon(icon_path)
+            # src/gui/main_window.py -> src/
+            base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            
+            # Priority 1: SVG (Vector) - Dynamic Recoloring
+            svg_path = os.path.join(base_path, "icons", f"{name}.svg")
+            if os.path.exists(svg_path):
+                try:
+                    with open(svg_path, "r", encoding="utf-8") as f:
+                        svg_content = f.read()
+                    
+                    def create_pixmap_variant(content, color):
+                        recolored = content.replace('"#000000"', f'"{color}"') \
+                                           .replace('"black"', f'"{color}"') \
+                                           .replace("'#000000'", f"'{color}'") \
+                                           .replace("'black'", f"'{color}'")
+                        data = bytearray(recolored, encoding='utf-8')
+                        pm = QPixmap()
+                        pm.loadFromData(data, "SVG")
+                        return pm
+
+                    # Normal State: Theme White
+                    normal_pixmap = create_pixmap_variant(svg_content, "#EAF2FF")
+                    
+                    # Disabled State: Darker Gray (for low contrast against dark BG)
+                    disabled_pixmap = create_pixmap_variant(svg_content, "#353D4A")
+
+                    if not normal_pixmap.isNull():
+                        icon = QIcon()
+                        icon.addPixmap(normal_pixmap, QIcon.Normal)
+                        icon.addPixmap(disabled_pixmap, QIcon.Disabled)
+                        return icon
+                except Exception as e:
+                    print(f"SVG load error for {name}: {e}")
+
+            # Priority 2: ICO (Legacy)
+            ico_path = os.path.join(base_path, "icons", f"{name}.ico")
+            if os.path.exists(ico_path):
+                return QIcon(ico_path)
+            
             return self.style().standardIcon(fallback_standard)
         
         from PySide6.QtWidgets import QStyle
         
-        self.run_action = QAction(load_icon("play", QStyle.SP_MediaPlay), "Start Batch", self)
+        self.run_action = QAction(load_icon("start", QStyle.SP_MediaPlay), "Start Batch", self)
         self.run_action.triggered.connect(self.on_start_clicked)
         toolbar.addAction(self.run_action)
         
-        self.stop_action = QAction(load_icon("stop", QStyle.SP_MediaStop), "Stop", self)
+        # Note: using 'pause' SVG for Stop action if 'stop.svg' is missing, or fallback to standard
+        self.stop_action = QAction(load_icon("pause", QStyle.SP_MediaStop), "Stop", self)
         self.stop_action.setEnabled(False)
         self.stop_action.triggered.connect(self.on_stop_clicked)
         toolbar.addAction(self.stop_action)
@@ -171,14 +208,14 @@ class MainWindow(QMainWindow):
         
         toolbar.addSeparator()
         
-        self.refresh_action = QAction(load_icon("refresh", QStyle.SP_BrowserReload), "Refresh", self)
+        self.refresh_action = QAction(load_icon("refresh-circle", QStyle.SP_BrowserReload), "Refresh", self)
         self.refresh_action.triggered.connect(self.on_refresh_clicked)
         toolbar.addAction(self.refresh_action)
         
         toolbar.addSeparator()
         
         # Config file buttons
-        self.edit_config_action = QAction(load_icon("config", QStyle.SP_FileDialogDetailedView), "Config", self)
+        self.edit_config_action = QAction(load_icon("settings", QStyle.SP_FileDialogDetailedView), "Config", self)
         self.edit_config_action.setToolTip("Edit analysis/mesh config (config.yaml)")
         self.edit_config_action.triggered.connect(self.on_edit_config_clicked)
         toolbar.addAction(self.edit_config_action)
@@ -188,7 +225,6 @@ class MainWindow(QMainWindow):
         self.edit_material_action.triggered.connect(self.on_edit_material_clicked)
         toolbar.addAction(self.edit_material_action)
         
-        toolbar.addSeparator()
         
         toolbar.addSeparator()
         
@@ -196,7 +232,7 @@ class MainWindow(QMainWindow):
         self.about_action.triggered.connect(self.on_about_clicked)
         toolbar.addAction(self.about_action)
 
-        self.exit_action = QAction(load_icon("exit", QStyle.SP_DialogCloseButton), "Exit", self)
+        self.exit_action = QAction(load_icon("shutdown", QStyle.SP_DialogCloseButton), "Exit", self)
         self.exit_action.triggered.connect(self.on_exit_clicked)
         toolbar.addAction(self.exit_action)
 

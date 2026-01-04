@@ -66,16 +66,35 @@ def process_log(log_path, output_dir):
     print(f"Saved CSV: {csv_path}")
 
     # Plot
-    plt.figure(figsize=(8, 6))
-    plt.plot(df['Stroke'], df['Reaction_Force'], marker='o', label='KEYCAP Reaction')
-    plt.title('Force vs Stroke')
-    plt.xlabel('Stroke (mm)')
-    plt.ylabel('Reaction Force (N)')
-    plt.grid(True)
-    plt.legend()
+    # Plot - Dark Theme
+    plt.style.use('dark_background')
+    plt.rcParams.update({
+        "figure.facecolor": "#0B0F14",
+        "axes.facecolor": "#0B0F14",
+        "axes.edgecolor": "#243244",
+        "axes.labelcolor": "#EAF2FF",
+        "xtick.color": "#6F8098",
+        "ytick.color": "#6F8098",
+        "grid.color": "#243244",
+        "text.color": "#EAF2FF",
+        "figure.autolayout": True
+    })
+
+    plt.figure(figsize=(10, 6)) # Wider layout
+    plt.plot(df['Stroke'], df['Reaction_Force'], marker='o', 
+             color='#2EE7FF', markeredgecolor='white', markersize=4,
+             linewidth=2, label='KEYCAP Reaction')
+    
+    # Use job name (log filename stem) as title
+    job_name = Path(log_path).stem
+    plt.title(job_name, color='#EAF2FF', fontsize=12, fontweight='bold')
+    plt.xlabel('Stroke (mm)', fontsize=10)
+    plt.ylabel('Reaction Force (N)', fontsize=10)
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.legend(facecolor='#141E2A', edgecolor='#243244', labelcolor='#EAF2FF')
     
     png_path = out_dir / "force_displacement.png"
-    plt.savefig(png_path)
+    plt.savefig(png_path, dpi=100, bbox_inches='tight')
     print(f"Saved Graph: {png_path}")
 
 if __name__ == "__main__":
