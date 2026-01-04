@@ -50,23 +50,25 @@ def main():
         try:
             generate_adaptive_mesh(args.internal_config, args.internal_stp, args.internal_out)
         except Exception as e:
-            print(f"Error in internal mesh gen: {e}")
+            print(f"Error: {e}")
             sys.exit(1)
         sys.exit(0)
 
     # 2. GUI Mode
-    # Set plugin path if needed
-    # os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = ...
-    
-    # --- Taskbar Icon Fix (AppUserModelID) ---
-    import ctypes
-    # IDを固定値にしてWindowsのアイコンキャッシュがバージョン変更に影響されないようにする
-    myappid = 'vexis_cae_v0_5.application.main_gui' 
+    # Setup Logging and Crash Handling (User Request)
+    from src.app_logger import setup_logging, install_crash_handler
+    setup_logging()
+    install_crash_handler()
+
+    # GUI App Setup
+    # Set AppUserModelID for taskbar icon grouping
     try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-    except Exception:
+        from ctypes import windll
+        myappid = 'vexis_cae.gui.version.0.5.0.rev3' 
+        windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except ImportError:
         pass
-    
+        
     app = QApplication(sys.argv)
     
     # --- Load Stylesheet (QSS) ---

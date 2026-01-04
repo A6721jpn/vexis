@@ -19,9 +19,9 @@ ABOUT_TEXT_TEMPLATE = """
 <p>https://iconoir.com</p>
 <p>Solver by <b>FEBio</b> licensed under the MIT License</p>
 <p>https://www.febio.org</p>
-<p><b>PySide6 (Qt)</b> - LGPL v3<br>
+<p>GUI by <b>PySide6 (Qt)</b> - LGPL v3<br>
 Copyright (C) The Qt Company Ltd.</p>
-<p><b>Gmsh</b> - GNU GPL v2+<br>
+<p>Mesher by <b>Gmsh</b> - GNU GPL v2+<br>
 Copyright (C) 1997-2024 C. Geuzaine and J.-F. Remacle</p>
 <p><b>NumPy & Pandas</b> - BSD 3-Clause<br>
 Copyright (c) NumPy Developers & The Pandas Development Team</p>
