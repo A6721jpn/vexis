@@ -59,8 +59,8 @@ def main():
     
     # --- Taskbar Icon Fix (AppUserModelID) ---
     import ctypes
-    # Changed ID again to force refresh
-    myappid = 'vexis_cae.gui.version.0.5.0.rev3' 
+    # IDを固定値にしてWindowsのアイコンキャッシュがバージョン変更に影響されないようにする
+    myappid = 'vexis_cae_v0_5.application.main_gui' 
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception:
@@ -68,20 +68,47 @@ def main():
     
     app = QApplication(sys.argv)
     
-    # --- Resolve Paths ---
-    icon_path = resolve_path("icon.ico")
+    # --- Resolve Paths & Multi-size Icon Loading ---
+    # マルチサイズ対応のマスターICOファイルを優先的に読み込む
+    master_icon_path = resolve_path(os.path.join("src", "icons", "icon.ico"))
+    app_icon = QIcon()
+    
+    if os.path.exists(master_icon_path):
+        app_icon = QIcon(master_icon_path)
+        print(f"[icon] Loaded master icon: {master_icon_path}")
+    else:
+        # 以前のディレクトリ内スキャンをフォールバックとして残す
+        icon_dir = resolve_path(os.path.normpath("src/icons"))
+        if os.path.exists(icon_dir) and os.path.isdir(icon_dir):
+            for f in os.listdir(icon_dir):
+                if f.lower().endswith(".ico"):
+                    app_icon.addFile(os.path.join(icon_dir, f))
+    
+    # Fallback to root icon.ico
+    if app_icon.isNull():
+        icon_path = resolve_path("icon.ico")
+        if os.path.exists(icon_path):
+            app_icon = QIcon(icon_path)
+            print("[icon] Fallback to root icon.ico")
 
-    print("[icon] icon_path =", icon_path)
-    print("[icon] exists   =", os.path.exists(icon_path))
-    
-    # --- Splash Screen Setup (Earliset possible) ---
+    icon_status = "Not Found"
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
+        icon_status = f"Loaded ({len(app_icon.availableSizes())} sizes)"
+        print(f"[icon] Final Status: {icon_status}")
+        print(f"[icon] Sizes: {app_icon.availableSizes()}")
+    else:
+        # Final fallback to logo PNG
+        logo_path = resolve_path(os.path.join("doc", "VEXIS-CAE-LOGO-LARGE.png"))
+        if os.path.exists(logo_path):
+            app_icon = QIcon(logo_path)
+            app.setWindowIcon(app_icon)
+            icon_status = "Fallback PNG"
+
+    # --- Splash Screen Setup ---
     from PySide6.QtWidgets import QSplashScreen
-    from PySide6.QtGui import QPixmap, QFont, QColor, QPainter, QBrush, QIcon
+    from PySide6.QtGui import QPixmap, QFont, QColor, QPainter, QBrush
     from PySide6.QtCore import Qt
-    
-    # ... (Splash creation logic is same, skip re-typing full splash code if possible, but here we need to insert before splash)
-    
-    # ... (Splash creation logic is same, skip re-typing full splash code if possible, but here we need to insert before splash)
     
     logo_path = resolve_path(os.path.join("doc", "VEXIS-CAE-LOGO-LARGE.png"))
     
@@ -111,26 +138,6 @@ def main():
 
     show_message("Initializing VEXIS-CAE Runtime...")
     
-    # --- Set App Icon (With Debug & Fallback) ---
-    # --- Set App Icon (With Debug & Fallback) ---
-    app_icon = None
-    icon_status = "Init"
-    if os.path.exists(icon_path):
-        app_icon = QIcon(icon_path)
-        print("[icon] isNull =", app_icon.isNull())
-        print("[icon] sizes  =", app_icon.availableSizes())
-
-        # 重要：アプリ全体 + メインウィンドウの両方に設定（保険）
-        app.setWindowIcon(app_icon)
-        icon_status = "Loaded"
-    else:
-        print("[icon] icon.ico not found")
-        icon_status = "Not Found"
-        # Fallback to PNG logo if ICO fails
-        if os.path.exists(logo_path):
-            app.setWindowIcon(QIcon(logo_path))
-            icon_status = "Fallback PNG"
-        
     show_message(f"Environment Check: {icon_status}")
     
     # --- Lazy Import & Init ---
