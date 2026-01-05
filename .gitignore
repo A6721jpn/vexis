@@ -156,3 +156,10 @@ Thumbs.db
 # --- Screenshot script ---
 capture_screen.ps1
 
+# --- Debug & Cleanup ---
+debug_*.py
+git_files.txt
+feb_files.csv
+!template.feb
+!template2.feb
+test/*.feb
