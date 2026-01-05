@@ -161,7 +161,7 @@ class ResultViewer(QWidget):
         self.loading_overlay.show()
         QApplication.processEvents()
         
-        # Find files with exact job name match
+        # Find files with exact job name match (fast filename-based filtering)
         all_vtk = glob.glob(os.path.join(temp_dir, "*.vtk"))
         candidates = []
         for vtk_path in all_vtk:
@@ -175,31 +175,56 @@ class ResultViewer(QWidget):
                     candidates.append(vtk_path)
         
         if candidates:
-            # Filter: Only include FEBio output files (those with 'displacement' field)
-            # Exclude Gmsh intermediate mesh files (which have 'gmsh:dim_tags')
-            febio_results = []
+            # Sort by modification time first
+            candidates.sort(key=os.path.getmtime)
+            
+            # Combined filter + pre-cache in single pass (read each file only once)
+            self._init_plotter()
+            
             for i, vtk_path in enumerate(candidates):
-                self.loading_overlay.setText(f"⏳ Checking file {i+1}/{len(candidates)}...")
+                self.loading_overlay.setText(f"⏳ Loading step {i+1}/{len(candidates)}...")
                 QApplication.processEvents()
+                
                 try:
                     mesh = pv.read(vtk_path)
-                    if "displacement" in mesh.point_data:
-                        febio_results.append(vtk_path)
-                except Exception:
-                    pass
+                    
+                    # Filter: only include files with displacement (FEBio output)
+                    if "displacement" not in mesh.point_data:
+                        continue
+                    
+                    # Cache raw mesh
+                    self._mesh_cache[vtk_path] = mesh
+                    
+                    # Compute and cache warped mesh
+                    try:
+                        warped = mesh.warp_by_vector("displacement")
+                    except Exception:
+                        warped = mesh
+                    self._warped_cache[vtk_path] = warped
+                    
+                    # Compute and cache edges
+                    edge_mesh = warped
+                    if hasattr(warped, 'linear_copy'):
+                        try:
+                            edge_mesh = warped.linear_copy()
+                        except Exception:
+                            pass
+                    edges = edge_mesh.extract_all_edges()
+                    self._edge_cache[vtk_path] = edges
+                    
+                    # Add to valid file list
+                    self.vtk_files.append(vtk_path)
+                    
+                except Exception as e:
+                    print(f"Load error for {vtk_path}: {e}")
             
-            if febio_results:
-                # Sort by modification time (FEBio outputs in order)
-                febio_results.sort(key=os.path.getmtime)
-                self.vtk_files = febio_results
-
-
+            self.loading_overlay.hide()
+            QApplication.processEvents()
+        
+        # Setup slider and display after loading
         if self.vtk_files:
             self.slider.setEnabled(True)
             self.slider.setRange(0, len(self.vtk_files) - 1)
-            
-            # Pre-cache all steps with loading indicator
-            self._precache_all_steps()
             
             # Auto-set to last step
             last_step = len(self.vtk_files) - 1
@@ -339,7 +364,11 @@ class ResultViewer(QWidget):
         self.field_combo.clear()
         point_fields = list(self.mesh.point_data.keys())
         cell_fields = list(self.mesh.cell_data.keys())
-        fields = point_fields + cell_fields
+        
+        # Filter out unwanted fields
+        hidden_fields = {'part_id', 'relative_volume', 'gmsh:dim_tags'}
+        fields = [f for f in point_fields + cell_fields if f not in hidden_fields]
+        
         self.field_combo.addItems(fields)
         
         # Restore selection if possible
