@@ -64,7 +64,7 @@ def main():
     # Set AppUserModelID for taskbar icon grouping
     try:
         from ctypes import windll
-        myappid = 'vexis_cae.gui.version.0.5.0.rev3' 
+        myappid = 'vexis_cae.gui.version.1.1.0' 
         windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except ImportError:
         pass

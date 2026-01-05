@@ -1,3 +1,3 @@
-VERSION = "0.5.0"
+VERSION = "1.1.0"
 AUTHOR = "A.O."
 LICENSE_NAME = "GNU GPL v3 or later"
