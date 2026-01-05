@@ -2,7 +2,8 @@ import os
 import glob
 import re
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                               QComboBox, QTabWidget, QScrollArea, QSlider, QCheckBox)
+                               QComboBox, QTabWidget, QScrollArea, QSlider, QCheckBox,
+                               QApplication)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 
@@ -31,7 +32,9 @@ class ResultViewer(QWidget):
         self.plotter = None
         self._plotter_initialized = False
         self.vtk_files = []
-        self._mesh_cache = {}
+        self._mesh_cache = {}      # Raw VTK file cache
+        self._warped_cache = {}    # Warped (deformed) mesh cache
+        self._edge_cache = {}      # Edge extraction cache
         self.current_step = 0
         self._setup_ui()
 
@@ -97,6 +100,19 @@ class ResultViewer(QWidget):
         
         self.view3d_layout.addLayout(self.slider_layout)
         
+        # Loading Overlay (hidden by default)
+        self.loading_overlay = QLabel("⏳ Loading Results...")
+        self.loading_overlay.setAlignment(Qt.AlignCenter)
+        self.loading_overlay.setStyleSheet("""
+            background-color: rgba(11, 15, 20, 0.9);
+            color: #2EE7FF;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 10px;
+        """)
+        self.loading_overlay.hide()
+        self.view3d_layout.addWidget(self.loading_overlay)
+        
         self.tab_widget.addTab(self.view3d_widget, "🔷 3D Result")
 
     def _init_plotter(self):
@@ -114,7 +130,10 @@ class ResultViewer(QWidget):
 
     def load_result(self, job_name, result_dir, temp_dir):
         """Load both graph and 3D result for a job."""
-        self._mesh_cache.clear() # Clear cache for new job
+        # Clear all caches for new job
+        self._mesh_cache.clear()
+        self._warped_cache.clear()
+        self._edge_cache.clear()
         self._temp_dir = temp_dir
         self._job_name = job_name
         
@@ -138,19 +157,28 @@ class ResultViewer(QWidget):
         
         self.vtk_files = []
         if candidates:
-            # Sort strategically: try to extract numbers from filenames
-            def sort_key(path):
-                base = os.path.basename(path)
-                nums = re.findall(r'\d+', base)
-                if nums:
-                    return int(nums[-1])
-                return 0 # Fallback
-            candidates.sort(key=os.path.getmtime)
-            self.vtk_files = candidates
+            # Filter: Only include FEBio output files (those with 'displacement' field)
+            # Exclude Gmsh intermediate mesh files (which have 'gmsh:dim_tags')
+            febio_results = []
+            for vtk_path in candidates:
+                try:
+                    mesh = pv.read(vtk_path)
+                    if "displacement" in mesh.point_data:
+                        febio_results.append(vtk_path)
+                except Exception:
+                    pass
+            
+            if febio_results:
+                # Sort by modification time (FEBio outputs in order)
+                febio_results.sort(key=os.path.getmtime)
+                self.vtk_files = febio_results
 
         if self.vtk_files:
             self.slider.setEnabled(True)
             self.slider.setRange(0, len(self.vtk_files) - 1)
+            
+            # Pre-cache all steps with loading indicator
+            self._precache_all_steps()
             
             # Auto-set to last step
             last_step = len(self.vtk_files) - 1
@@ -168,6 +196,61 @@ class ResultViewer(QWidget):
                     "Ensure FEBio output is set to VTK in template.", 
                     position='upper_left', font_size=10)
 
+    def _precache_all_steps(self):
+        """Pre-cache all VTK steps (warp + edges) with loading indicator."""
+        if not self.vtk_files:
+            return
+            
+        self._init_plotter()
+        
+        # Show loading overlay
+        self.loading_overlay.setText(f"⏳ Loading {len(self.vtk_files)} time steps...")
+        self.loading_overlay.show()
+        QApplication.processEvents()
+        
+        total = len(self.vtk_files)
+        for i, vtk_path in enumerate(self.vtk_files):
+            # Update loading text with progress
+            self.loading_overlay.setText(f"⏳ Loading step {i+1}/{total}...")
+            QApplication.processEvents()
+            
+            try:
+                # Read and cache raw mesh
+                if vtk_path not in self._mesh_cache:
+                    self._mesh_cache[vtk_path] = pv.read(vtk_path)
+                
+                raw_mesh = self._mesh_cache[vtk_path]
+                
+                # Compute and cache warped mesh
+                if vtk_path not in self._warped_cache:
+                    if "displacement" in raw_mesh.point_data:
+                        try:
+                            warped = raw_mesh.warp_by_vector("displacement")
+                        except Exception:
+                            warped = raw_mesh
+                    else:
+                        warped = raw_mesh
+                    self._warped_cache[vtk_path] = warped
+                
+                # Compute and cache edges
+                if vtk_path not in self._edge_cache:
+                    warped = self._warped_cache[vtk_path]
+                    edge_mesh = warped
+                    if hasattr(warped, 'linear_copy'):
+                        try:
+                            edge_mesh = warped.linear_copy()
+                        except Exception:
+                            pass
+                    edges = edge_mesh.extract_all_edges()
+                    self._edge_cache[vtk_path] = edges
+                    
+            except Exception as e:
+                print(f"Pre-cache error for {vtk_path}: {e}")
+        
+        # Hide loading overlay
+        self.loading_overlay.hide()
+        QApplication.processEvents()
+
     def set_step(self, step_index, force_reset=False):
         if not self.vtk_files or step_index < 0 or step_index >= len(self.vtk_files):
             return
@@ -179,18 +262,34 @@ class ResultViewer(QWidget):
         self._load_mesh_file(vtk_path, is_result=True, reset_cam=(step_index == 0) or force_reset)
 
     def _load_mesh_file(self, file_path, is_result=True, reset_cam=True):
-        """Load a mesh file (VTK, etc). Uses caching."""
+        """Load a mesh file (VTK, etc). Uses caching for raw and warped meshes."""
         self._init_plotter()
         if not self.plotter:
             return
             
         try:
-            # Check cache first
-            if file_path in self._mesh_cache:
-                self.mesh = self._mesh_cache[file_path]
+            # Check warped cache first (fastest path)
+            if file_path in self._warped_cache:
+                self.mesh = self._mesh_cache.get(file_path)
+                self._current_warped = self._warped_cache[file_path]
             else:
-                self.mesh = pv.read(file_path)
-                self._mesh_cache[file_path] = self.mesh
+                # Check raw cache
+                if file_path in self._mesh_cache:
+                    self.mesh = self._mesh_cache[file_path]
+                else:
+                    self.mesh = pv.read(file_path)
+                    self._mesh_cache[file_path] = self.mesh
+                
+                # Compute and cache warped mesh
+                if "displacement" in self.mesh.point_data:
+                    try:
+                        self._current_warped = self.mesh.warp_by_vector("displacement")
+                    except Exception as e:
+                        print(f"Warp error: {e}")
+                        self._current_warped = self.mesh
+                else:
+                    self._current_warped = self.mesh
+                self._warped_cache[file_path] = self._current_warped
                 
             self._display_mesh(is_result=is_result, reset_cam=reset_cam)
         except Exception as e:
@@ -225,16 +324,10 @@ class ResultViewer(QWidget):
             self.field_combo.setCurrentText(current_field)
         self.field_combo.blockSignals(False)
         
-        # Warp mesh if displacement data exists
-        display_mesh = self.mesh
-        if "displacement" in self.mesh.point_data:
-            try:
-                # Apply deformation (scale factor 1.0)
-                display_mesh = self.mesh.warp_by_vector("displacement")
-            except Exception as e:
-                print(f"Warp error: {e}")
-                # Fallback to original mesh
-                display_mesh = self.mesh
+        # Use cached warped mesh instead of computing every time
+        display_mesh = getattr(self, '_current_warped', self.mesh)
+        if display_mesh is None:
+            display_mesh = self.mesh
 
         show_edges = self.wireframe_check.isChecked()
         
@@ -259,17 +352,24 @@ class ResultViewer(QWidget):
                 self.plotter.add_text("Mesh preview (analysis mesh)", position='upper_left', font_size=10, color='white')
         
         # Explicitly extract and show edges to preserve Hex structure
-        # (show_edges=True often shows triangulation on non-planar quads)
-        if show_edges:
-            # Attempt to use linear_copy to avoid showing diagonals of quadratic faces
-            edge_mesh = display_mesh
-            if hasattr(display_mesh, 'linear_copy'):
-                try:
-                    edge_mesh = display_mesh.linear_copy()
-                except Exception:
-                    pass
+        # Use cache to avoid recomputing edges every frame
+        if show_edges and display_mesh is not None:
+            # Generate cache key from current vtk file
+            cache_key = self.vtk_files[self.current_step] if self.vtk_files else id(display_mesh)
             
-            edges = edge_mesh.extract_all_edges()
+            if cache_key in self._edge_cache:
+                edges = self._edge_cache[cache_key]
+            else:
+                # Attempt to use linear_copy to avoid showing diagonals of quadratic faces
+                edge_mesh = display_mesh
+                if hasattr(display_mesh, 'linear_copy'):
+                    try:
+                        edge_mesh = display_mesh.linear_copy()
+                    except Exception:
+                        pass
+                edges = edge_mesh.extract_all_edges()
+                self._edge_cache[cache_key] = edges
+            
             self.plotter.add_mesh(edges, color="black", line_width=1)
         
         if reset_cam:
@@ -297,7 +397,10 @@ class ResultViewer(QWidget):
         self.field_combo.clear()
         self.vtk_files = []
         self._mesh_cache.clear()
+        self._warped_cache.clear()
+        self._edge_cache.clear()
         self.mesh = None
+        self._current_warped = None
         self.slider.setEnabled(False)
         self.time_label.setText("Step: 0 / 0")
         self.graph_label.setText("No graph available")

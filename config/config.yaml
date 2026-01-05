@@ -23,7 +23,7 @@ analysis:
   template_feb: "template2.feb"
   material_name: "Ogden_Rubber_v1" # Reference to material.yaml
   total_stroke: 1.0        # Total depression distance (mm). 
-  time_steps: 10           # Number of simulation steps (Default: 20, Full-Push: 50, Push-Return: 100)
+  time_steps: 5           # Number of simulation steps (Default: 20, Full-Push: 50, Push-Return: 100)
   num_threads:           # Number of CPU threads for solver (Leave empty for full power)
 
 # ========================================================================
