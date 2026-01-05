@@ -1,6 +1,6 @@
-# =================================================
-# VEXIS-CAE v0.5.0 (Proto5) Simulation Configuration
-# =================================================
+# ===========================================================
+# VEXIS-CAE v1.1 (Developer Preview) Simulation Configuration
+# ===========================================================
 
 mesh:
   # Mesh Generation Parameters (FElupe/Gmsh)
@@ -27,6 +27,6 @@ analysis:
   num_threads:           # Number of CPU threads for solver (Leave empty for full power)
 
 # ========================================================================
-#   Copyright (C) 2025 PK6721jpn
+#   Copyright (C) 2025 A.O
 #   VEXIS-CAE is free software under the terms of the GNU GPL v3 or later
 # ========================================================================
