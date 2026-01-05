@@ -1,6 +1,6 @@
-# ===========================================================
-# VEXIS-CAE v1.1 (Developer Preview) Simulation Configuration
-# ===========================================================
+# =============================================================
+# VEXIS-CAE v1.1.1 (Developer Preview) Simulation Configuration
+# =============================================================
 
 mesh:
   # Mesh Generation Parameters (FElupe/Gmsh)
