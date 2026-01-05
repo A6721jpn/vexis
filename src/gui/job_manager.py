@@ -128,7 +128,21 @@ class JobManager(QObject):
         self.worker = None
         self._batch_running = False
 
+    def get_invalid_jobs(self):
+        """非ASCII文字を含むジョブのリストを返す"""
+        invalid_jobs = []
+        for job in self.jobs.values():
+            if job.status == JobStatus.PENDING:
+                # ファイル名 (job.name) と パス (job.step_path) 両方をチェック
+                try:
+                    job.name.encode('ascii')
+                    job.step_path.encode('ascii')
+                except UnicodeEncodeError:
+                    invalid_jobs.append(job)
+        return invalid_jobs
+
     def add_job_from_path(self, step_path):
+
         path = os.path.abspath(step_path)
         for j in self.jobs.values():
             if os.path.abspath(j.step_path) == path:

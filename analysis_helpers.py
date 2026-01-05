@@ -92,8 +92,21 @@ def run_meshing(step_file, config, temp_dir, log_callback=None):
         
         try:
             # Use Popen to capture logs in real-time for GUI
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            # Use CREATE_NO_WINDOW to hide blank console on Windows
+            startupinfo = None
+            if os.name == 'nt':
+                import subprocess as sp
+                startupinfo = sp.STARTUPINFO()
+                startupinfo.dwFlags |= sp.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = sp.SW_HIDE
+
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
+                text=True, bufsize=1, 
+                startupinfo=startupinfo
+            )
             for line in proc.stdout:
+
                 f_log.write(line)
                 if log_callback:
                     log_callback(line.strip())
@@ -209,7 +222,23 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
     
     try:
         with open(log_file, "w") as f_log:
-            proc = subprocess.Popen(cmd, env=env, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            # Use CREATE_NO_WINDOW for FEBio solver on Windows
+            startupinfo = None
+            if os.name == 'nt':
+                import subprocess as sp
+                startupinfo = sp.STARTUPINFO()
+                startupinfo.dwFlags |= sp.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = sp.SW_HIDE
+
+            proc = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT, 
+                cwd=result_dir, 
+                text=True, 
+                bufsize=1,
+                startupinfo=startupinfo
+            )
             
             for line in proc.stdout:
                 # Check external stop request (GUI)

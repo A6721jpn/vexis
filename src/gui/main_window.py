@@ -364,10 +364,23 @@ class MainWindow(QMainWindow):
             self.mesh_panel.load_step(job.step_path)
 
     def on_start_clicked(self):
+        # Validate filenames (ASCII check)
+        invalid_jobs = self.job_manager.get_invalid_jobs()
+        if invalid_jobs:
+            names = "\n".join([f"・ {j.name}" for j in invalid_jobs])
+            QMessageBox.warning(
+                self, 
+                "不正なファイル名", 
+                f"以下のファイル名に日本語等の全角文字が含まれています：\n\n{names}\n\n"
+                "解析を確実に実行するため、ファイル名を半角英数字（例: case_0）に変更してください。"
+            )
+            return
+
         self.run_action.setEnabled(False)
         self.stop_action.setEnabled(True)
         self.skip_action.setEnabled(True)
         self.job_manager.start_batch()
+
 
     def on_stop_clicked(self):
         self.run_action.setEnabled(True)
