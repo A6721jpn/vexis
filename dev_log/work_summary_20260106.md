@@ -14,10 +14,18 @@ VEXIS-CAE v1.2.0 リリース準備
 - `src/version.py` 更新
 - `config/config.yaml` ヘッダーコメント更新
 
-### 新機能: アンチスリープ機能
-- [ ] `src/utils/sleep_manager.py` 新規作成
-- [ ] `MainWindow`ツールバーに「Keep Awake」チェックボックス追加
-- [ ] チェックON時にPCスリープと画面OFFを防止
+### 新機能: アンチスリープ機能 ✅
+- [x] `src/utils/sleep_manager.py` 新規作成
+- [x] ツールバーにアイコントグルボタン追加（終了ボタンの右隣）
+- [x] `eye-closed.svg` (OFF) / `eye-solid.svg` (ON) で状態を視覚表示
+- [x] クリックで切り替え、既存アイコンと同じ色味
+- [x] アプリ終了時にスリープ設定を復元
 
 ## 技術メモ
 Windows API `SetThreadExecutionState` を使用してスリープを制御
+
+## 変更ファイル
+- `src/version.py` - バージョン番号更新
+- `config/config.yaml` - ヘッダーコメント更新
+- `src/utils/sleep_manager.py` - 新規作成
+- `src/gui/main_window.py` - チェックボックスUI追加

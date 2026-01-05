@@ -18,6 +18,7 @@ from src.gui.panels.progress_panel import ProgressPanel
 from src.gui.panels.progress_panel import ProgressPanel
 from src.gui.panels.result_viewer import ResultViewer
 from src.gui.about_dialog import AboutDialog
+from src.utils.sleep_manager import prevent_sleep, allow_sleep
 import src.version as v
 
 class MainWindow(QMainWindow):
@@ -260,6 +261,20 @@ class MainWindow(QMainWindow):
         self.exit_action = QAction(load_icon("shutdown", QStyle.SP_DialogCloseButton), "Exit", self)
         self.exit_action.triggered.connect(self.on_exit_clicked)
         toolbar.addAction(self.exit_action)
+        
+        # Spacer for visual separation before sleep toggle
+        toolbar.addSeparator()
+        toolbar.addSeparator()  # Double separator for extra spacing
+        
+        # Sleep Prevention Toggle (Icon-based)
+        self._sleep_enabled = False
+        self._sleep_icon_on = load_icon("eye-solid", QStyle.SP_DialogApplyButton)
+        self._sleep_icon_off = load_icon("eye-closed", QStyle.SP_DialogCancelButton)
+        
+        self.sleep_action = QAction(self._sleep_icon_off, "Keep Awake", self)
+        self.sleep_action.setToolTip("Anti-sleep ON/OFF")
+        self.sleep_action.triggered.connect(self._on_sleep_toggle_clicked)
+        toolbar.addAction(self.sleep_action)
 
     def _connect_signals(self):
         self.file_watcher.file_added.connect(self.job_manager.add_job_from_path)
@@ -468,6 +483,19 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.warning(self, "File Not Found", f"Config file not found:\n{file_path}")
 
+    def _on_sleep_toggle_clicked(self):
+        """Callback for sleep prevention toggle button"""
+        self._sleep_enabled = not self._sleep_enabled
+        
+        if self._sleep_enabled:
+            prevent_sleep()
+            self.sleep_action.setIcon(self._sleep_icon_on)
+            self.status_bar.showMessage("Sleep prevention: ON - PC will stay awake")
+        else:
+            allow_sleep()
+            self.sleep_action.setIcon(self._sleep_icon_off)
+            self.status_bar.showMessage("Sleep prevention: OFF - Normal behavior")
+
     def on_exit_clicked(self):
         self.close()
 
@@ -482,6 +510,9 @@ class MainWindow(QMainWindow):
         )
         
         if reply == QMessageBox.Yes:
+            # Restore normal sleep behavior on exit
+            allow_sleep()
+            
             # Stop all background processes
             self.status_bar.showMessage("Shutting down...")
             
