@@ -86,7 +86,7 @@ QListWidget::item:selected {
 QProgressBar {
     text-align: center;
     font-weight: 800;
-    color: #A9B7CC;          /* バー上でも読める濃色に固定 */
+    color: #ff4646ff;          /* バー上でも読める色に固定 */
     background-color: #0E151E;
     border: 1px solid #243244;
     border-radius: 8px;
@@ -123,7 +123,7 @@ QStatusBar::item {
 
 /* ---------- Scrollbars ---------- */
 QScrollBar:vertical {
-    background: #12181F; /* Lighter than before to reduce contrast gap with handle */
+    background: #12181F;
     width: 12px;
     margin: 2px;
     border-radius: 6px;

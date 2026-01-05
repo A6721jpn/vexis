@@ -21,6 +21,7 @@ class AnalysisWorker(QThread):
         self.result_dir = result_dir
         self._is_running = True
         self._stopped = False
+        self._skipped = False
 
     def run(self):
         job_id = self.job.id
@@ -95,6 +96,11 @@ class AnalysisWorker(QThread):
                 check_stop_callback=check_stop
             )
             
+            # If manually stopped or skipped, do NOT emit Success/Fail finished signal here.
+            # It is handled by stop()/skip() method.
+            if self._stopped or self._skipped:
+                return
+
             if success:
                 self.progress_updated.emit(job_id, 100, "Completed")
                 self.finished.emit(job_id, True, "")

@@ -379,9 +379,34 @@ class MainWindow(QMainWindow):
         if not job:
             self.preview_stack.setCurrentIndex(0)
             return
+
+        # Check if result file exists (regardless of status)
+        # Note: We duplicate some logic from ResultViewer.load_result here for the check, 
+        # or we can just try to load it. 
+        # Better approach: Check file existence here to decide View.
+        
+        has_result = False
+        import os
+        base = job.name
+        possible_paths = [
+            os.path.join(self.result_dir, f"{base}.xplt"),
+            os.path.join(self.temp_dir, f"{base}.xplt"),
+            os.path.join(os.getcwd(), "results", f"{base}.xplt"),
+            os.path.join(os.getcwd(), "temp", f"{base}.xplt"),
+        ]
+        
+        # If job object has paths, check them too
+        if job.result_path and os.path.exists(job.result_path):
+             has_result = True
+        else:
+            for p in possible_paths:
+                if p and os.path.exists(p):
+                    has_result = True
+                    break
             
-        if job.status == JobStatus.COMPLETED:
+        if has_result:
             self.preview_stack.setCurrentWidget(self.result_panel)
+            # Pass explicit paths as required by new signature
             self.result_panel.load_result(job.name, self.result_dir, self.temp_dir)
             
         elif job.status == JobStatus.RUNNING:
