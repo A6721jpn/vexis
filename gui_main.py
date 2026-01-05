@@ -60,6 +60,12 @@ def main():
     setup_logging()
     install_crash_handler()
 
+    # Add src/libs to sys.path for vendorized libraries (waffleiron etc.)
+    # This allows 'import waffleiron' to work even if it is inside src/libs
+    libs_path = resolve_path(os.path.join("src", "libs"))
+    if os.path.exists(libs_path) and libs_path not in sys.path:
+        sys.path.insert(0, libs_path)
+
     # GUI App Setup
     # Set AppUserModelID for taskbar icon grouping
     try:
@@ -69,7 +75,9 @@ def main():
     except ImportError:
         pass
         
+    print("DEBUG: Creating QApplication")
     app = QApplication(sys.argv)
+    print("DEBUG: QApplication created")
     
     # --- Load Stylesheet (QSS) ---
     qss_path = resolve_path(os.path.join("src", "gui", "styles", "dark_theme.qss"))
@@ -80,6 +88,8 @@ def main():
     else:
         # print(f"[style] Warning: QSS not found at {qss_path}")
         pass
+    
+    print("DEBUG: Stylesheet loaded")
     
     # --- Resolve Paths & Multi-size Icon Loading ---
     # マルチサイズ対応のマスターICOファイルを優先的に読み込む
@@ -118,6 +128,8 @@ def main():
             app.setWindowIcon(app_icon)
             icon_status = "Fallback PNG"
 
+    print("DEBUG: Icon setup done")
+
     # --- Splash Screen Setup ---
     from PySide6.QtWidgets import QSplashScreen
     from PySide6.QtGui import QPixmap, QFont, QColor, QPainter, QBrush
@@ -142,19 +154,27 @@ def main():
         painter.drawPixmap(x, y, logo)
         painter.end()
     
+    print("DEBUG: Showing Splash")
     splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
     splash.show()
     
+    
+    # import logging
+    # logger = logging.getLogger(__name__)
+
     def show_message(msg):
+        print(f"[Startup] {msg}")
+        # logger.info(f"[Startup] {msg}")
         splash.showMessage(msg, Qt.AlignBottom | Qt.AlignCenter, Qt.white)
         app.processEvents()
 
-    show_message("Initializing VEXIS-CAE Runtime...")
-    
-    show_message(f"Environment Check: {icon_status}")
     
     # --- Lazy Import & Init ---
     try:
+        show_message("Initializing VEXIS-CAE Runtime...")
+        
+        show_message(f"Environment Check: {icon_status}")
+
         import time
         from PySide6.QtCore import QTimer
         
@@ -179,12 +199,16 @@ def main():
         QTimer.singleShot(700, lambda: splash.finish(window))
         
     except Exception as e:
+        print(f"CRASH: {e}")
+        # import traceback
+        # traceback.print_exc()
         splash.showMessage(f"Error: {e}", Qt.AlignBottom | Qt.AlignCenter, Qt.red)
         app.processEvents()
-        time.sleep(3)
+        time.sleep(10) # Wait longer to read
         sys.exit(1)
     
     sys.exit(app.exec())
 
 if __name__ == "__main__":
     main()
+

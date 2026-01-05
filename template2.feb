@@ -40758,7 +40758,7 @@
 		</load_controller>
 	</LoadData>
 	<Output>
-		<plotfile type="vtk">
+		<plotfile type="febio">
 			<var type="displacement"/>
 			<var type="stress"/>
 			<var type="Lagrange strain"/>
