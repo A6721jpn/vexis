@@ -5,7 +5,7 @@
   - メッシュ生成中やモデル準備中にスキップを連打し、次のジョブが確実に開始されるか、バッチが停止しないかを確認する（修正済み機能の回帰テスト）。
 - [ ] **ランタイム依存関係のパッケージ化改善** 
   - 同梱ソルバー (`febio4.exe`) が VC++ 再頒布可能パッケージなしでも動作するよう、必要な DLL を PyInstaller で正確に同梱する。
-- [ ] **ポストプロセッサの高速化**  *実装作業中
+- [x] **ポストプロセッサの高速化**  *実装作業中
   - スライダーを動かして時系列でVTKを表示していくとき、スライダーを引っ張ってもマウスにうまく追従せずに2～3秒ほど遅れて3Dコンターが表示されるので、これを改善する。
 
 ## 優先度：中 (Priority: Medium)
@@ -18,6 +18,8 @@
   - 現在は解析終了後に画像を出力しているが、解析中に荷重-変位曲線（Reaction Force vs Displacement）などをリアルタイムでグラフ表示する。
 - [ ] **材料ライブラリの拡張**
   - `material.yaml` の定義を増やし、Ogden model以外の超弾性モデル（Mooney-Rivlin, Arruda-Boyce 等）にも対応する。
+- [ ] **統合ログの実装**
+  - いまはGUI/CUIのログがいろいろなところに細切れになっているので、統合してデバッグと開発効率を向上させる。
 
 ## 優先度：低 (Priority: Low / Future)
 - [ ] **非 ASCII パス・ファイル名への完全対応**
@@ -29,7 +31,7 @@
 - [ ] **FEBioアダプティブ・リメッシング統合**
   - `pyfebio`ライブラリの`HexRefineAdaptor`パターンに従い、lxmlでXMLを直接生成。
   - `<MeshAdaptor>`ブロックを`.feb`テンプレートに注入し、応力誤差基準で自動細分化を有効化。
-  - 詳細: [adaptive_remeshing_plan.md](file:///c:/github_repo/vexis/dev_log/adaptive_remeshing_plan.md)
+  - 詳細: [adaptive_remeshing_plan.md](./adaptive_remeshing_plan.md)
 - [ ] **クラウド連携・HPC対応**
   - 多数のジョブをハイパフォーマンスクラスタやクラウド上で並列実行し、結果を同期する仕組み。
 
