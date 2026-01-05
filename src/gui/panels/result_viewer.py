@@ -289,7 +289,11 @@ class ResultViewer(QWidget):
                 self.time_slider.blockSignals(False)
                 self.current_step_idx = len(self.steps) - 1
             
-            # Populate fields
+            # IMPORTANT: Load step data BEFORE populating fields
+            # Otherwise grid.point_data and cell_data will be empty
+            self.loader.load_step_result(self.grid, self.current_step_idx)
+            
+            # Now populate fields (will see the loaded data)
             self._update_fields()
 
             # Initial display
@@ -402,7 +406,9 @@ class ResultViewer(QWidget):
                     show_edges=True,
                     edge_color=edge_color,
                     line_width=0.5,
-                    scalar_bar_args=sbar_args
+                    scalar_bar_args=sbar_args,
+                    nan_opacity=0.0,  # Make NaN cells transparent
+                    clim=None  # Auto-range (excludes NaN)
                 )
             else:
                 self.plotter.add_mesh(

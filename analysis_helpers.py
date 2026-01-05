@@ -77,7 +77,7 @@ def _get_simulation_total_time(feb_path):
     except Exception:
         return 1.0
 
-def run_meshing(step_file, config, temp_dir, log_path=None, log_callback=None):
+def run_meshing(step_file, config, temp_dir, log_path=None, log_callback=None, check_stop_callback=None):
     base_name = os.path.splitext(os.path.basename(step_file))[0]
     out_vtk = os.path.join(temp_dir, f"{base_name}.vtk")
     
@@ -107,6 +107,10 @@ def run_meshing(step_file, config, temp_dir, log_path=None, log_callback=None):
                 )
 
                 for line in proc.stdout:
+                    if check_stop_callback and check_stop_callback():
+                        proc.kill()
+                        f_log.write("\n!!! Meshing Stopped by User !!!\n")
+                        raise KeyboardInterrupt("SkipJob")
 
                     f_log.write(line)
                     if log_callback:

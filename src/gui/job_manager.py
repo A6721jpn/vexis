@@ -63,13 +63,33 @@ class AnalysisWorker(QThread):
             with open(log_path, "w", encoding="utf-8") as f: 
                 f.write(f"=== Analysis Log for {base_name} ===\n")
 
+            # Callback to check if stopped/skipped from GUI thread
+            def check_stop():
+                return not self._is_running
+
             # --- 1. Meshing ---
             self.progress_updated.emit(job_id, 1, "Meshing...")
-            vtk_path = helpers.run_meshing(self.job.step_path, self.config_path, self.temp_dir, log_path=log_path, log_callback=log_cb)
+            try:
+                vtk_path = helpers.run_meshing(self.job.step_path, self.config_path, self.temp_dir, 
+                                             log_path=log_path, log_callback=log_cb, 
+                                             check_stop_callback=check_stop)
+            except KeyboardInterrupt:
+                if self._skipped:
+                    self.finished.emit(job_id, False, "Skipped by user")
+                    return
+                if self._stopped:
+                    self.finished.emit(job_id, False, "Stopped by user")
+                    return
+                # If unknown interrupt, re-raise
+                raise
+            
             self.job.vtk_path = vtk_path
             self.progress_updated.emit(job_id, 5, "Mesh Complete")
             
-            if not self._is_running: return
+            if not self._is_running: 
+                if self._skipped: self.finished.emit(job_id, False, "Skipped by user")
+                else: self.finished.emit(job_id, False, "Stopped by user")
+                return
 
             # --- 2. Integration ---
             self.progress_updated.emit(job_id, 10, "Preparing FEBio model...")
@@ -78,15 +98,14 @@ class AnalysisWorker(QThread):
             self.job.feb_path = out_feb
             self.progress_updated.emit(job_id, 15, "Prep Complete")
             
-            if not self._is_running: return
+            if not self._is_running: 
+                if self._skipped: self.finished.emit(job_id, False, "Skipped by user")
+                else: self.finished.emit(job_id, False, "Stopped by user")
+                return
 
             # --- 3. Solver ---
             self.progress_updated.emit(job_id, 20, "Solving (0%)")
             
-            # Callback to check if stopped/skipped from GUI thread
-            def check_stop():
-                return not self._is_running
-
             success = helpers.run_solver_and_extract(
                 out_feb, self.result_dir, 
                 log_path=log_path,
@@ -96,9 +115,14 @@ class AnalysisWorker(QThread):
                 check_stop_callback=check_stop
             )
             
-            # If manually stopped or skipped, do NOT emit Success/Fail finished signal here.
-            # It is handled by stop()/skip() method.
-            if self._stopped or self._skipped:
+            # If manually stopped or skipped (via check_stop_callback in solver loop)
+            if self._stopped:
+                self.progress_updated.emit(job_id, 100, "Stopped")
+                self.finished.emit(job_id, False, "Stopped by user")
+                return
+            if self._skipped:
+                self.progress_updated.emit(job_id, 100, "Skipped")
+                self.finished.emit(job_id, False, "Skipped by user")
                 return
 
             if success:
@@ -117,14 +141,14 @@ class AnalysisWorker(QThread):
     def stop(self):
         self._is_running = False
         self._stopped = True
+        # finished signal will be emitted in run()
 
     def skip(self):
         self._is_running = False
         self._skipped = True
-        # Emit skipped status
+        # Emit skipped status update immediately for UI feedback, but do NOT emit finished yet
         self.log_updated.emit(self.job.id, ">>> Skipped by user")
-        self.progress_updated.emit(self.job.id, 100, "Skipped")
-        self.finished.emit(self.job.id, False, "Skipped by user")
+        self.progress_updated.emit(self.job.id, 100, "Skipping...")
 
 class JobManager(QObject):
     job_added = Signal(JobItem)
@@ -265,7 +289,25 @@ class JobManager(QObject):
             self.worker = AnalysisWorker(next_job, self.config_path, self.temp_dir, self.result_dir)
             self.worker.progress_updated.connect(self._on_worker_progress)
             self.worker.log_updated.connect(self._on_worker_log)
-            self.worker.finished.connect(self._on_worker_finished)
+            # Custom signal for status updates
+            self.worker.finished.connect(self._on_worker_finished) 
+            # Standard QThread signal for safe sequencing (wait for thread to actually die)
+            # Note: AnalysisWorker defines 'finished', so accessing QThread.finished requires casting or careful binding?
+            # Actually, AnalysisWorker.finished shadows QThread.finished.
+            # We must rename the custom signal in AnalysisWorker or use a different connection.
+            # But changing AnalysisWorker signature is invasive.
+            # Let's use the 'finished()' from QThread by connecting to the worker itself as a QThread object?
+            # Or simplified: AnalysisWorker emits its custom finished signal at the VERY END of run().
+            # So if we trust run() to return immediately after emitting, the race is small.
+            # However, the previous code had 'return' immediately after emit inside run(), so it should be fine IF we removed the early emit in skip().
+            # Since we did remove the early emit in skip(), the custom signal is now ONLY emitted when run() is returning.
+            # So we can keep using custom signal for sequencing, as isRunning() will flip shortly.
+            # BUT to be 100% safe, let's verify if we need to wait.
+            
+            # Since we fixed skip() to NOT emit finished, the race is resolved.
+            # The finished signal now effectively means "Thread is done".
+            # So start_next_job called from on_worker_finished might still see isRunning=True for a microsecond.
+            # So let's wrap start_next_job call in a small delay or use QTimer.singleShot(0, ...)
             
             next_job.status = JobStatus.RUNNING
             self.status_changed.emit(next_job.id, JobStatus.RUNNING)
@@ -314,4 +356,6 @@ class JobManager(QObject):
             self.status_changed.emit(job_id, job.status)
         
         if self._batch_running:
-            self.start_next_job()
+            # Delay slightly to allow the thread to fully exit and isRunning() to become False
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(100, self.start_next_job)

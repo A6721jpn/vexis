@@ -143,40 +143,45 @@ class WaffleironLoader:
 
             # Domain (Element) data -> grid.cell_data
             elif region_type == "domain":
-                # Domain data in Waffleiron seems to be a single long list of values
-                # corresponding to all elements in the domains.
-                # However, values list might be concatenated domains.
-                # Check how xplt_data.step_data constructs it.
-                # It says: "Values are returned as a list ... corresponding to the zero-indexed ID"
-                # If Waffleiron merges domains correctly, indices should match element IDs.
+                # FEBio only stores data for deformable elements (not rigid bodies)
+                # so we may have fewer data points than grid cells.
                 
                 if not values: continue
                 
                 try:
-                    arr = np.array(values)
+                    # Convert to numpy - handle various input formats
+                    try:
+                        arr = np.array(values, dtype=float)
+                    except Exception:
+                        # Try without dtype constraint
+                        arr = np.array(values)
+                        if arr.dtype == object:
+                            # Flatten nested structure
+                            arr = np.vstack(values).astype(float)
                     
-                    # Stress is usually mat3fs (6 components symmetric)
-                    # PyVista/ParaView usually expects 6 or 9 components for tensor.
-                    # Waffleiron mat3fs: [xx, yy, zz, xy, yz, zx]
-                    # VTK/PyVista typical order: [xx, yy, zz, xy, yz, xz]
+                    original_len = len(arr)
+                    original_shape = arr.shape
                     
-                    if arr.ndim == 2 and arr.shape[1] == 6:
-                         # Reorder if necessary or keep as is? 
-                         # FEBio: xx, yy, zz, xy, yz, zx
-                         # VTK: xx, yy, zz, xy, yz, xz (Wait, VTK tensor is 9 usually? Or 6?)
-                         # PyVista tensor support is tricky.
-                         # Let's save as distinct components for safety first?
-                         # Or just save as array and let user deal.
-                         pass
-
-                    # Ensure size matches number of cells
-                    if len(arr) == grid.n_cells:
-                        grid.cell_data[var_name] = arr
-                    else:
-                        pass
-                        # print(f"Cell data size mismatch for {var_name}: {len(arr)} vs {grid.n_cells}")
-                        # This happens if not all elements have results (e.g. strict domains).
-                        # But Waffleiron seems to try to return values for IDs.
+                    # Handle size mismatch by padding with NaN
+                    if original_len != grid.n_cells:
+                        print(f"DEBUG: Padding {var_name} from {original_shape} to {grid.n_cells} cells")
+                        
+                        if arr.ndim == 1:
+                            padded = np.full(grid.n_cells, np.nan, dtype=float)
+                            padded[:original_len] = arr
+                            arr = padded
+                        else:
+                            # Handle 2D or higher dimensional arrays
+                            # shape like (7772, 6) for stress tensor
+                            remaining_shape = arr.shape[1:]
+                            padded_shape = (grid.n_cells,) + remaining_shape
+                            padded = np.full(padded_shape, np.nan, dtype=float)
+                            padded[:original_len] = arr
+                            arr = padded
+                        
+                        print(f"DEBUG: After padding: {arr.shape}")
+                    
+                    grid.cell_data[var_name] = arr
                         
                 except Exception as e:
                     print(f"Failed to set cell data {var_name}: {e}")
