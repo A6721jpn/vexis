@@ -123,36 +123,36 @@ QStatusBar::item {
 
 /* ---------- Scrollbars ---------- */
 QScrollBar:vertical {
-    background: #0B0F14;
+    background: #12181F; /* Lighter than before to reduce contrast gap with handle */
     width: 12px;
     margin: 2px;
     border-radius: 6px;
 }
 QScrollBar::handle:vertical {
-    background: #243244;
+    background: #304E6E; /* Brighter blue for better visibility */
     min-height: 30px;
     border-radius: 6px;
 }
 QScrollBar::handle:vertical:hover {
-    background: #2EE7FF;
+    background: #2EE7FF; /* Neon-Cyan on hover */
 }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0px;
 }
 
 QScrollBar:horizontal {
-    background: #0B0F14;
+    background: #12181F;
     height: 12px;
     margin: 2px;
     border-radius: 6px;
 }
 QScrollBar::handle:horizontal {
-    background: #243244;
+    background: #304E6E;
     min-width: 30px;
     border-radius: 6px;
 }
 QScrollBar::handle:horizontal:hover {
-    background: #8B5CFF;
+    background: #8B5CFF; /* Neon-Purple on hover */
 }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     width: 0px;
