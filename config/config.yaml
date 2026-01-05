@@ -19,7 +19,7 @@ mesh:
 
 analysis:
   # FEBio Solver Simulation Settings
-  febio_path: "C:\\Program Files\\FEBioStudio\\bin\\febio4.exe"
+  febio_path: ""           # Leave empty to use bundled solver (solver/febio4.exe)
   template_feb: "template2.feb"
   material_name: "Ogden_Rubber_v1" # Reference to material.yaml
   total_stroke: 1.0        # Total depression distance (mm). 
