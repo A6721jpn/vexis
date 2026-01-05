@@ -1,4 +1,5 @@
 import os
+import glob
 import uuid
 import time
 import yaml
@@ -54,9 +55,15 @@ class AnalysisWorker(QThread):
                 # Fallback to internal default if not found
                 template_path = helpers.DEFAULT_TEMPLATE
 
+            # --- Initialize Log ---
+            log_path = os.path.join(self.temp_dir, f"{base_name}.log")
+            # Clear previous log
+            with open(log_path, "w", encoding="utf-8") as f: 
+                f.write(f"=== Analysis Log for {base_name} ===\n")
+
             # --- 1. Meshing ---
             self.progress_updated.emit(job_id, 1, "Meshing...")
-            vtk_path = helpers.run_meshing(self.job.step_path, self.config_path, self.temp_dir, log_callback=log_cb)
+            vtk_path = helpers.run_meshing(self.job.step_path, self.config_path, self.temp_dir, log_path=log_path, log_callback=log_cb)
             self.job.vtk_path = vtk_path
             self.progress_updated.emit(job_id, 5, "Mesh Complete")
             
@@ -65,7 +72,7 @@ class AnalysisWorker(QThread):
             # --- 2. Integration ---
             self.progress_updated.emit(job_id, 10, "Preparing FEBio model...")
             out_feb = os.path.join(self.temp_dir, f"{base_name}.feb")
-            helpers.run_integration(vtk_path, template_path, out_feb, push_dist, sim_steps)
+            helpers.run_integration(vtk_path, template_path, out_feb, push_dist, sim_steps, log_path=log_path)
             self.job.feb_path = out_feb
             self.progress_updated.emit(job_id, 15, "Prep Complete")
             
@@ -80,6 +87,7 @@ class AnalysisWorker(QThread):
 
             success = helpers.run_solver_and_extract(
                 out_feb, self.result_dir, 
+                log_path=log_path,
                 febio_exe=febio_path,
                 log_callback=log_cb, 
                 progress_callback=prog_cb,
@@ -151,8 +159,55 @@ class JobManager(QObject):
         name = os.path.splitext(os.path.basename(path))[0]
         job_id = str(uuid.uuid4())[:8]
         job = JobItem(id=job_id, name=name, step_path=path)
+        
+        # Check if results already exist
+        if self._has_existing_results(name):
+            job.status = JobStatus.COMPLETED
+            job.status_text = "Results Available"
+        
         self.jobs[job_id] = job
         self.job_added.emit(job)
+
+    def _has_existing_results(self, job_name):
+        """Check if result files exist for this job."""
+        graph_path = os.path.join(self.result_dir, f"{job_name}_graph.png")
+        return os.path.exists(graph_path)
+    
+    def cleanup_job_files(self, job_name):
+        """Remove temp and result files for a job before re-analysis."""
+        import shutil
+        
+        # Clean temp files: job_name.vtk, job_name.*.vtk, job_name.feb, job_name.log, etc.
+        temp_patterns = [
+            os.path.join(self.temp_dir, f"{job_name}.vtk"),
+            os.path.join(self.temp_dir, f"{job_name}.*.vtk"),
+            os.path.join(self.temp_dir, f"{job_name}.feb"),
+            os.path.join(self.temp_dir, f"{job_name}.log"),
+            os.path.join(self.temp_dir, f"{job_name}_*.vtk"),
+            os.path.join(self.temp_dir, f"{job_name}_*.msh"),
+        ]
+        
+        for pattern in temp_patterns:
+            for f in glob.glob(pattern):
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
+        
+        # Clean result files
+        result_patterns = [
+            os.path.join(self.result_dir, f"{job_name}_*.txt"),
+            os.path.join(self.result_dir, f"{job_name}_*.csv"),
+            os.path.join(self.result_dir, f"{job_name}_*.png"),
+        ]
+        
+        for pattern in result_patterns:
+            for f in glob.glob(pattern):
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
+
 
     def remove_job_by_path(self, step_path):
         target_id = None
@@ -166,6 +221,15 @@ class JobManager(QObject):
             self.job_removed.emit(target_id)
 
     def start_batch(self):
+        # Reset COMPLETED jobs to PENDING and clean up their files
+        for job in self.jobs.values():
+            if job.status == JobStatus.COMPLETED:
+                self.cleanup_job_files(job.name)
+                job.status = JobStatus.PENDING
+                job.progress = 0
+                job.status_text = "Pending"
+                self.status_changed.emit(job.id, JobStatus.PENDING)
+
         self._batch_running = True
         self.start_next_job()
 

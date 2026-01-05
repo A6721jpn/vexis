@@ -17,27 +17,29 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-GLOBAL_LOG_PATH = os.path.join(BASE_DIR, "temp", "workflow_detailed.log")
 DEFAULT_TEMPLATE = os.path.join(BASE_DIR, "template2.feb")
 
 @contextlib.contextmanager
-def redirect_output_to_file(log_path=GLOBAL_LOG_PATH):
+def redirect_output_to_file(log_path):
     """
     Redirects Python-level stdout/stderr to a log file.
     Does NOT capture C-level output (like Gmsh), but safe for tqdm.
     """
-    os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
-    
-    with open(log_path, "a", encoding='utf-8') as f:
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        try:
-            sys.stdout = f
-            sys.stderr = f
-            yield f
-        finally:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
+    if log_path:
+        os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
+        
+        with open(log_path, "a", encoding='utf-8') as f:
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            try:
+                sys.stdout = f
+                sys.stderr = f
+                yield f
+            finally:
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
+    else:
+        yield sys.stdout
 
 
 def _get_simulation_total_time(feb_path):
@@ -75,7 +77,7 @@ def _get_simulation_total_time(feb_path):
     except Exception:
         return 1.0
 
-def run_meshing(step_file, config, temp_dir, log_callback=None):
+def run_meshing(step_file, config, temp_dir, log_path=None, log_callback=None):
     base_name = os.path.splitext(os.path.basename(step_file))[0]
     out_vtk = os.path.join(temp_dir, f"{base_name}.vtk")
     
@@ -84,44 +86,50 @@ def run_meshing(step_file, config, temp_dir, log_callback=None):
     else:
         cmd = [sys.executable, "-m", "src.mesh_gen.main", config, step_file, "-o", out_vtk]
     
-    os.makedirs(os.path.dirname(os.path.abspath(GLOBAL_LOG_PATH)), exist_ok=True)
+    # os.makedirs(os.path.dirname(os.path.abspath(GLOBAL_LOG_PATH)), exist_ok=True)
     
-    with open(GLOBAL_LOG_PATH, "a", encoding="utf-8") as f_log:
-        f_log.write(f"\n--- Meshing Log for {base_name} ---\n")
-        f_log.flush()
-        
-        try:
-            # Use Popen to capture logs in real-time for GUI
-            # Use CREATE_NO_WINDOW to hide blank console on Windows
-            cflags = 0
-            if os.name == 'nt':
-                cflags = 0x08000000 # CREATE_NO_WINDOW
-
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
-                text=True, bufsize=1, 
-                creationflags=cflags
-            )
-
-            for line in proc.stdout:
-
-                f_log.write(line)
-                if log_callback:
-                    log_callback(line.strip())
-            proc.wait()
-            if proc.returncode != 0:
-                raise subprocess.CalledProcessError(proc.returncode, cmd)
-        except Exception as e:
-            f_log.write(f"\n!!! Meshing Failed: {e} !!!\n")
-            raise RuntimeError(f"Meshing failed for {base_name}.")
+    if log_path:
+        with open(log_path, "a", encoding="utf-8") as f_log:
+            f_log.write(f"\n--- Meshing Log for {base_name} ---\n")
+            f_log.flush()
             
-        f_log.write("-----------------------------------\n")
+            try:
+                # Use Popen to capture logs in real-time for GUI
+                # Use CREATE_NO_WINDOW to hide blank console on Windows
+                cflags = 0
+                if os.name == 'nt':
+                    cflags = 0x08000000 # CREATE_NO_WINDOW
+
+                proc = subprocess.Popen(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
+                    text=True, bufsize=1, 
+                    creationflags=cflags
+                )
+
+                for line in proc.stdout:
+
+                    f_log.write(line)
+                    if log_callback:
+                        log_callback(line.strip())
+                proc.wait()
+                if proc.returncode != 0:
+                    raise subprocess.CalledProcessError(proc.returncode, cmd)
+            except Exception as e:
+                f_log.write(f"\n!!! Meshing Failed: {e} !!!\n")
+                raise RuntimeError(f"Meshing failed for {base_name}.")
+                
+            f_log.write("-----------------------------------\n")
+    else:
+        # Fallback if no log path provided (CLI mode mostly)
+         subprocess.run(cmd, check=True)
+        
+    return out_vtk
         
     return out_vtk
 
 
-def run_integration(vtk_path, template, out_feb, push_dist_override=None, steps=None, material_name=None, material_config_path=None):
-    with redirect_output_to_file():
+def run_integration(vtk_path, template, out_feb, push_dist_override=None, steps=None, material_name=None, material_config_path=None, log_path=None):
+    with redirect_output_to_file(log_path):
         print(f"--- Integration Log for {vtk_path} ---")
         
         import meshio
@@ -174,16 +182,14 @@ def run_integration(vtk_path, template, out_feb, push_dist_override=None, steps=
 
     return out_feb 
 
-def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=None, log_callback=None, progress_callback=None, check_stop_callback=None):
+def run_solver_and_extract(feb_path, result_dir, log_path=None, num_threads=None, febio_exe=None, log_callback=None, progress_callback=None, check_stop_callback=None):
     base_name = os.path.splitext(os.path.basename(feb_path))[0]
+    work_dir = os.path.dirname(feb_path) # Temp directory
     
     env = os.environ.copy()
     if num_threads:
         env["OMP_NUM_THREADS"] = str(num_threads)
 
-    log_name = f"{base_name}_log.txt"
-    log_file = os.path.join(result_dir, log_name)
-    
     # Priority list of solver candidates
     solver_candidates = []
     
@@ -231,10 +237,12 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
     if os.name == 'nt':
         cflags = 0x08000000 # CREATE_NO_WINDOW
 
-    os.makedirs(os.path.dirname(os.path.abspath(GLOBAL_LOG_PATH)), exist_ok=True)
     
     try:
-        with open(log_file, "w") as f_log, open(GLOBAL_LOG_PATH, "a", encoding="utf-8") as f_global:
+        # Open combined log file
+        f_global = open(log_path, "a", encoding="utf-8") if log_path else open(os.devnull, "w")
+        
+        try:
             f_global.write(f"\n--- Solver Log for {base_name} ---\n")
             f_global.flush()
 
@@ -252,7 +260,7 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
 
                 f_global.write(f"DEBUG: Trying Solver = {current_exe}\n")
                 f_global.write(f"DEBUG: CMD = {cmd}\n")
-                f_global.write(f"DEBUG: CWD = {result_dir}\n")
+                f_global.write(f"DEBUG: CWD (Temp) = {work_dir}\n")
                 f_global.flush()
 
                 try:
@@ -261,7 +269,7 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
                         env=current_env,
                         stdout=subprocess.PIPE, 
                         stderr=subprocess.STDOUT, 
-                        cwd=result_dir, 
+                        cwd=work_dir, # Run in temp dir
                         text=True, 
                         bufsize=1,
                         creationflags=cflags
@@ -275,8 +283,7 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
                             f_global.write("!!! Solver Stopped by User !!!\n")
                             return False
 
-                        f_log.write(line)
-                        f_global.write(line)
+                        f_global.write(line) # Unified log
                         if log_callback:
                             log_callback(line.strip())
 
@@ -306,29 +313,27 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
                     f_global.flush()
 
                     if last_error_code == 0:
-                        return True # Success!
+                        break # Success!
                     
                     # If failed with DLL error, try next candidate
                     if last_error_code == 3221225781: # 0xC0000135 = STATUS_DLL_NOT_FOUND
                         f_global.write(f"!!! DLL NOT FOUND for {current_exe}. Trying next candidate... !!!\n")
                         continue
                     
-                    # Other errors: check log and possibly return False
-                    if os.path.exists(log_file):
-                        with open(log_file, "r") as f_check:
-                            content = f_check.read(1000)
-                            if content:
-                                f_global.write(f"DEBUG: Solver Log Snippet:\n{content}\n")
-                    
-                    return False # Non-DLL error, stop trying candidates
+                    # Other errors
+                    break # Non-DLL error, stop trying candidates
 
                 except Exception as e:
                     f_global.write(f"!!! Popen Failed for {current_exe}: {e} !!!\n")
                     f_global.flush()
                     # Try next candidate
                     continue
-                    
-            return False # All candidates failed
+            
+            if last_error_code != 0:
+                return False
+
+        finally:
+             if f_global: f_global.close()
             
     except Exception as e:
         if proc and proc.poll() is None:
@@ -337,7 +342,7 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
         
         # Log error to global log if possible
         try:
-            with open(GLOBAL_LOG_PATH, "a", encoding="utf-8") as f_err:
+             with open(log_path, "a", encoding="utf-8") as f_err:
                 f_err.write(f"!!! Solver Exception: {str(e)} !!!\n")
         except:
             pass
@@ -363,18 +368,13 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
     
     # 2. Extract Results
     time.sleep(1.0) 
-    if not os.path.exists(log_file): return False
-
-    with open(log_file, "r") as f:
-        log_content = f.read()
     
-    is_converged = "Normal termination" in log_content or "N O R M A L   T E R M I N A T I O N" in log_content
-    if not is_converged:
-        tqdm.write(f"  ! Solver did not converge for {base_name}. Skipping result extraction.")
-        return False
-
-    with redirect_output_to_file():
-        src_dir = os.path.dirname(feb_path)
+    # Data check in Unified Log
+    # In unified mode, we don't parse a separate log file for "Normal Termination".
+    # We rely on proc.returncode == 0 checked above.
+    
+    with redirect_output_to_file(log_path):
+        # src_dir is now the same as work_dir (temp)
         # Helper for file rotation/movement with retries
         def safe_move(src, dst):
             if not os.path.exists(src): return
@@ -386,10 +386,28 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
                 except OSError: time.sleep(1.0 + i)
             tqdm.write(f"  ! Failed to move {os.path.basename(src)}")
 
-        safe_move(os.path.join(src_dir, "rigid_body_data.txt"), os.path.join(result_dir, f"{base_name}_data.txt"))
-        data_path = os.path.join(result_dir, f"{base_name}_data.txt")
-        if os.path.exists(data_path):
-            process_log(data_path, result_dir)
+        # Looking for data file in work_dir (temp)
+        data_file_name = "rigid_body_data.txt" # Default name from template
+        data_file_path = os.path.join(work_dir, data_file_name)
+        
+        # If not found there, check if it somehow ended up in result_dir (CWD usually, but we set CWD to work_dir)
+        if not os.path.exists(data_file_path):
+             # Fallback check
+             fallback_path = os.path.join(result_dir, data_file_name)
+             if os.path.exists(fallback_path):
+                  data_file_path = fallback_path
+
+        # If still not found, check extraction logic
+        if not os.path.exists(data_file_path):
+             print(f"! Data file not found: {data_file_path}")
+             return False
+
+        # Move to result dir with new name for processing
+        target_data_path = os.path.join(result_dir, f"{base_name}_data.txt")
+        safe_move(data_file_path, target_data_path)
+        
+        if os.path.exists(target_data_path):
+            process_log(target_data_path, result_dir)
             safe_move(os.path.join(result_dir, "force_displacement.csv"), os.path.join(result_dir, f"{base_name}_result.csv"))
             safe_move(os.path.join(result_dir, "force_displacement.png"), os.path.join(result_dir, f"{base_name}_graph.png"))
 

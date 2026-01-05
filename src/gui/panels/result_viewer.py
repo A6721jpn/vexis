@@ -152,15 +152,35 @@ class ResultViewer(QWidget):
             self.graph_label.setText(f"Graph not found:\n{graph_path}")
         
         # Load 3D: Search for all VTK results (time series)
-        pattern = os.path.join(temp_dir, f"{job_name}*.vtk")
-        candidates = glob.glob(pattern)
-        
+        # Use more specific pattern: job_name.X.vtk or job_name.vtk (exact match, not prefix)
+        # This prevents case_1 from matching case_10, case_11, etc.
         self.vtk_files = []
+        
+        # Show loading overlay early to prevent perceived freeze
+        self.loading_overlay.setText("⏳ Scanning result files...")
+        self.loading_overlay.show()
+        QApplication.processEvents()
+        
+        # Find files with exact job name match
+        all_vtk = glob.glob(os.path.join(temp_dir, "*.vtk"))
+        candidates = []
+        for vtk_path in all_vtk:
+            base = os.path.basename(vtk_path)
+            # Match: job_name.vtk or job_name.N.vtk (where N is step number)
+            if base == f"{job_name}.vtk" or base.startswith(f"{job_name}.") and base.endswith(".vtk"):
+                # But exclude files like job_name_tmp.vtk or job_nameX.vtk
+                name_without_ext = base[:-4]  # Remove .vtk
+                parts = name_without_ext.split('.')
+                if parts[0] == job_name:
+                    candidates.append(vtk_path)
+        
         if candidates:
             # Filter: Only include FEBio output files (those with 'displacement' field)
             # Exclude Gmsh intermediate mesh files (which have 'gmsh:dim_tags')
             febio_results = []
-            for vtk_path in candidates:
+            for i, vtk_path in enumerate(candidates):
+                self.loading_overlay.setText(f"⏳ Checking file {i+1}/{len(candidates)}...")
+                QApplication.processEvents()
                 try:
                     mesh = pv.read(vtk_path)
                     if "displacement" in mesh.point_data:
@@ -172,6 +192,7 @@ class ResultViewer(QWidget):
                 # Sort by modification time (FEBio outputs in order)
                 febio_results.sort(key=os.path.getmtime)
                 self.vtk_files = febio_results
+
 
         if self.vtk_files:
             self.slider.setEnabled(True)
@@ -186,6 +207,7 @@ class ResultViewer(QWidget):
             self.set_step(last_step, force_reset=True)
             
         else:
+            self.loading_overlay.hide()
             self.slider.setEnabled(False)
             self.time_label.setText("Step: 0 / 0")
             self._init_plotter()
