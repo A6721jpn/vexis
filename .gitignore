@@ -152,3 +152,7 @@ Thumbs.db
 .env.*
 *.pem
 *.key
+
+# --- Screenshot script ---
+capture_screen.ps1
+

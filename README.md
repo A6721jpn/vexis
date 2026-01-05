@@ -54,6 +54,8 @@ python main.py
 
 For more detailed information, please refer to the following documents:
 - [User Guide](doc/user_guide.html): General usage and troubleshooting.
+- [GUI Reference Manual (JA)](doc/gui_reference_ja.md): Detailed explanation of GUI elements.
+
 
 ---
 *Vexis is currently optimized for rubber keycap buckling analysis.*
