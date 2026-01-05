@@ -184,29 +184,38 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
     log_name = f"{base_name}_log.txt"
     log_file = os.path.join(result_dir, log_name)
     
-    if not febio_exe:
-        # Priority:
-        # 1. External 'solver' directory next to the EXE (Portable mode / User override)
-        # 2. Bundled 'solver' directory (PyInstaller internal - if any)
-        # 3. Default System Path
-        
-        candidates = [
-            os.path.join(BASE_DIR, "solver", "febio4.exe"), # External Or Bundled (root)
-            r"C:\Program Files\FEBioStudio\bin\febio4.exe"  # Default Install
-        ]
-        
-        if os.environ.get("FEBIO_PATH"):
-            candidates.insert(0, os.environ["FEBIO_PATH"])
-
-        for path in candidates:
-            if os.path.exists(path):
-                febio_exe = path
-                break
-        else:
-            febio_exe = candidates[-1] # Fallback to default path string if none exist
-
+    # Priority list of solver candidates
+    solver_candidates = []
     
-    cmd = [febio_exe, "-i", feb_path]
+    # 1. Bundled solver (always try first)
+    bundled_path = os.path.join(BASE_DIR, "solver", "febio4.exe")
+    solver_candidates.append(bundled_path)
+    
+    # 2. Config path (passed via febio_exe argument from job_manager)
+    if febio_exe and febio_exe not in solver_candidates:
+        solver_candidates.append(febio_exe)
+        
+    # 3. Environment variable
+    if os.environ.get("FEBIO_PATH"):
+        env_path = os.environ["FEBIO_PATH"]
+        if env_path not in solver_candidates:
+            solver_candidates.append(env_path)
+        
+    # 4. Default System Path
+    system_path = r"C:\Program Files\FEBioStudio\bin\febio4.exe"
+    if system_path not in solver_candidates:
+        solver_candidates.append(system_path)
+
+    # Filter out non-existent if they are just strings (except the last one as placeholder)
+    # We keep the system_path even if it doesn't exist, as a last resort to try.
+    valid_candidates = [p for p in solver_candidates if os.path.exists(p)]
+    if not valid_candidates and os.path.exists(system_path): # If all others are gone, but system path exists
+        valid_candidates = [system_path]
+    elif not valid_candidates: # If nothing exists, just try the bundled path as a default
+        valid_candidates = [bundled_path]
+    
+    # Ensure unique candidates and order
+    valid_candidates = list(dict.fromkeys(valid_candidates))
 
     total_time = _get_simulation_total_time(feb_path)
     
@@ -229,75 +238,97 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
             f_global.write(f"\n--- Solver Log for {base_name} ---\n")
             f_global.flush()
 
-            f_global.write(f"DEBUG: CMD = {cmd}\n")
-            f_global.write(f"DEBUG: CWD = {result_dir}\n")
-            f_global.flush()
-
-            try:
-                proc = subprocess.Popen(
-                    cmd, 
-                    env=env,
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT, 
-                    cwd=result_dir, 
-                    text=True, 
-                    bufsize=1,
-                    creationflags=cflags
-                )
-            except Exception as e:
-                f_global.write(f"!!! Popen Failed: {e} !!!\n")
-                f_global.flush()
-                raise e
-
+            # --- Execution Loop ---
+            last_error_code = 0
             
-            for line in proc.stdout:
-                # Check external stop request (GUI)
-                if check_stop_callback and check_stop_callback():
-                    proc.kill()
-                    f_global.write("!!! Solver Stopped by User !!!\n")
-                    return False
-
-                f_log.write(line)
-                f_global.write(line) # Also log to global workflow log
-                if log_callback:
-                    log_callback(line.strip())
-
+            for current_exe in valid_candidates:
+                cmd = [current_exe, "-i", feb_path]
                 
-                # Update Progress
-                if "time" in line:
-                    match = re.search(r"time\s*=\s*([\d\.eE\+\-]+)", line, re.IGNORECASE)
-                    if match:
-                        try:
-                            current_time = float(match.group(1))
-                            if progress_callback:
-                                # Convert time to percentage (heuristic)
-                                percent = int((current_time / total_time) * 100) if total_time > 0 else 0
-                                progress_callback(min(percent, 99))
-                            elif solver_bar:
-                                solver_bar.n = current_time
-                                solver_bar.refresh()
+                # Ensure current_exe's dir is in PATH for its own DLLs
+                exe_dir = os.path.dirname(os.path.abspath(current_exe))
+                current_env = env.copy()
+                if exe_dir not in current_env.get("PATH", ""):
+                    current_env["PATH"] = exe_dir + os.pathsep + current_env.get("PATH", "")
+
+                f_global.write(f"DEBUG: Trying Solver = {current_exe}\n")
+                f_global.write(f"DEBUG: CMD = {cmd}\n")
+                f_global.write(f"DEBUG: CWD = {result_dir}\n")
+                f_global.flush()
+
+                try:
+                    proc = subprocess.Popen(
+                        cmd, 
+                        env=current_env,
+                        stdout=subprocess.PIPE, 
+                        stderr=subprocess.STDOUT, 
+                        cwd=result_dir, 
+                        text=True, 
+                        bufsize=1,
+                        creationflags=cflags
+                    )
+                    
+                    # Read and log output
+                    for line in proc.stdout:
+                        # Check external stop request (GUI)
+                        if check_stop_callback and check_stop_callback():
+                            proc.kill()
+                            f_global.write("!!! Solver Stopped by User !!!\n")
+                            return False
+
+                        f_log.write(line)
+                        f_global.write(line)
+                        if log_callback:
+                            log_callback(line.strip())
+
+                        # Update Progress
+                        if "time" in line:
+                            match = re.search(r"time\s*=\s*([\d\.eE\+\-]+)", line, re.IGNORECASE)
+                            if match:
+                                try:
+                                    current_time = float(match.group(1))
+                                    if progress_callback:
+                                        percent = int((current_time / total_time) * 100) if total_time > 0 else 0
+                                        progress_callback(min(percent, 99))
+                                    elif solver_bar:
+                                        solver_bar.n = current_time
+                                        solver_bar.refresh()
+                                    last_refresh_time = time.time()
+                                except ValueError:
+                                    pass
+                        
+                        if solver_bar and time.time() - last_refresh_time > 2.0:
+                            solver_bar.refresh()
                             last_refresh_time = time.time()
-                        except ValueError:
-                            pass
-                
-                if solver_bar and time.time() - last_refresh_time > 2.0:
-                    solver_bar.refresh()
-                    last_refresh_time = time.time()
-                
-                # Check skip (CLI only)
-                if not progress_callback and msvcrt.kbhit():
-                    key = msvcrt.getch()
-                    try:
-                        key_char = key.decode().lower()
-                    except:
-                        key_char = ""
-                    if key_char == 's':
-                        proc.kill()
-                        raise KeyboardInterrupt("SkipJob")
+                    
+                    proc.wait()
+                    last_error_code = proc.returncode
+                    f_global.write(f"DEBUG: Solver Finished with Return Code = {last_error_code}\n")
+                    f_global.flush()
 
-        proc.wait() 
-        if proc.returncode != 0:
-            return False
+                    if last_error_code == 0:
+                        return True # Success!
+                    
+                    # If failed with DLL error, try next candidate
+                    if last_error_code == 3221225781: # 0xC0000135 = STATUS_DLL_NOT_FOUND
+                        f_global.write(f"!!! DLL NOT FOUND for {current_exe}. Trying next candidate... !!!\n")
+                        continue
+                    
+                    # Other errors: check log and possibly return False
+                    if os.path.exists(log_file):
+                        with open(log_file, "r") as f_check:
+                            content = f_check.read(1000)
+                            if content:
+                                f_global.write(f"DEBUG: Solver Log Snippet:\n{content}\n")
+                    
+                    return False # Non-DLL error, stop trying candidates
+
+                except Exception as e:
+                    f_global.write(f"!!! Popen Failed for {current_exe}: {e} !!!\n")
+                    f_global.flush()
+                    # Try next candidate
+                    continue
+                    
+            return False # All candidates failed
             
     except Exception as e:
         if proc and proc.poll() is None:
