@@ -25,6 +25,54 @@ def _ensure_pyvista():
             PYVISTA_AVAILABLE = False
     return PYVISTA_AVAILABLE
 
+from PySide6.QtCore import QThread, Signal, QMutex, QMutexLocker
+
+class ResultLoaderThread(QThread):
+    """Background thread to pre-cache VTK files for smooth playback."""
+    progress_updated = Signal(int, int) # current, total
+    finished_loading = Signal()
+    
+    def __init__(self, vtk_files, cache_dict):
+        super().__init__()
+        self.vtk_files = vtk_files
+        self.cache = cache_dict
+        self._mutex = QMutex()
+        self._stop_flag = False
+        
+    def stop(self):
+        with QMutexLocker(self._mutex):
+            self._stop_flag = True
+        self.wait()
+        
+    def run(self):
+        total = len(self.vtk_files)
+        for i, path in enumerate(self.vtk_files):
+            # Check stop flag
+            with QMutexLocker(self._mutex):
+                if self._stop_flag:
+                    return
+            
+            # Skip if already cached (e.g. by user interaction)
+            if path in self.cache:
+                self.progress_updated.emit(i+1, total)
+                continue
+                
+            try:
+                # Read mesh
+                mesh = pv.read(path)
+                
+                # Simple check for displacement data to validate it's a result file
+                # If valid, add to cache
+                if "displacement" in mesh.point_data:
+                    self.cache[path] = mesh
+                
+            except Exception as e:
+                print(f"Background load error for {path}: {e}")
+                
+            self.progress_updated.emit(i+1, total)
+            
+        self.finished_loading.emit()
+
 class ResultViewer(QWidget):
     def __init__(self):
         super().__init__()
@@ -34,6 +82,7 @@ class ResultViewer(QWidget):
         self.vtk_files = []
         self._mesh_cache = {}      # Raw VTK file cache
         self.current_step = 0
+        self.loader_thread = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -100,16 +149,18 @@ class ResultViewer(QWidget):
         self.view3d_layout.addLayout(self.slider_layout)
         
         # Loading Overlay (hidden by default)
-        self.loading_overlay = QLabel("⏳ Loading Results...")
+        self.loading_overlay = QLabel("")
         self.loading_overlay.setAlignment(Qt.AlignCenter)
         self.loading_overlay.setStyleSheet("""
-            background-color: rgba(11, 15, 20, 0.9);
+            background-color: rgba(11, 15, 20, 0.7);
             color: #2EE7FF;
-            font-size: 18px;
-            font-weight: bold;
-            border-radius: 10px;
+            font-size: 14px;
+            border-radius: 5px;
+            padding: 5px;
         """)
         self.loading_overlay.hide()
+        # Overlay is actually tricky to position absolute in layout, so put it in status bar or separate layout
+        # Simply show it at bottom of 3D view for now, or just use it as status
         self.view3d_layout.addWidget(self.loading_overlay)
         
         self.tab_widget.addTab(self.view3d_widget, "🔷 3D Result")
@@ -129,10 +180,15 @@ class ResultViewer(QWidget):
 
     def load_result(self, job_name, result_dir, temp_dir):
         """Load both graph and 3D result for a job."""
+        # Stop previous loader if running
+        if self.loader_thread and self.loader_thread.isRunning():
+            self.loader_thread.stop()
+        
         # Clear cache for new job
         self._mesh_cache.clear()
         self._temp_dir = temp_dir
         self._job_name = job_name
+        self.vtk_files = []
         
         # Load Graph PNG
         graph_path = os.path.join(result_dir, f"{job_name}_graph.png")
@@ -148,69 +204,55 @@ class ResultViewer(QWidget):
         else:
             self.graph_label.setText(f"Graph not found:\n{graph_path}")
         
-        # Load 3D: Search for all VTK results (time series)
-        # Use more specific pattern: job_name.X.vtk or job_name.vtk (exact match, not prefix)
-        # This prevents case_1 from matching case_10, case_11, etc.
-        self.vtk_files = []
-        
-        # Show loading overlay early to prevent perceived freeze
-        self.loading_overlay.setText("⏳ Scanning result files...")
-        self.loading_overlay.show()
-        QApplication.processEvents()
-        
-        # Find files with exact job name match (fast filename-based filtering)
+        # Scan VTK files (fast)
         all_vtk = glob.glob(os.path.join(temp_dir, "*.vtk"))
         candidates = []
         for vtk_path in all_vtk:
             base = os.path.basename(vtk_path)
             # Match: job_name.vtk or job_name.N.vtk (where N is step number)
             if base == f"{job_name}.vtk" or base.startswith(f"{job_name}.") and base.endswith(".vtk"):
-                # But exclude files like job_name_tmp.vtk or job_nameX.vtk
                 name_without_ext = base[:-4]  # Remove .vtk
                 parts = name_without_ext.split('.')
                 if parts[0] == job_name:
                     candidates.append(vtk_path)
         
+        # Sort files
         if candidates:
-            # Sort by modification time first
-            candidates.sort(key=os.path.getmtime)
-            
-            # Combined filter + pre-cache in single pass (read each file only once)
-            self._init_plotter()
-            
-            for i, vtk_path in enumerate(candidates):
-                self.loading_overlay.setText(f"⏳ Loading step {i+1}/{len(candidates)}...")
-                QApplication.processEvents()
-                
+            # Sort by modification time or name length/step number needed for correct order
+            # Name strategy: job_name.0.vtk, job_name.1.vtk ... job_name.10.vtk
+            # Natural sort is better
+            def extract_step(path):
+                base = os.path.basename(path)
                 try:
-                    mesh = pv.read(vtk_path)
-                    
-                    # Filter: only include files with displacement (FEBio output)
-                    if "displacement" not in mesh.point_data:
-                        continue
-                    
-                    # Cache raw mesh only (no warp/edge pre-computation for speed)
-                    self._mesh_cache[vtk_path] = mesh
-                    
-                    # Add to valid file list
-                    self.vtk_files.append(vtk_path)
-                    
-                except BaseException as e:
-                    # Catch all errors including VTK/C++ level errors
-                    print(f"Load error for {vtk_path}: {e}")
+                    parts = base[:-4].split('.')
+                    if len(parts) > 1 and parts[1].isdigit():
+                        return int(parts[1])
+                    return -1 # Base file (e.g., job_name.vtk)
+                except:
+                    return 0
             
-            self.loading_overlay.hide()
-            QApplication.processEvents()
-        
-        # Setup slider and display after loading
-        if self.vtk_files:
-            self.slider.setEnabled(True)
+            candidates.sort(key=extract_step)
+            self.vtk_files = candidates
+
+            # Setup slider immediately
+            self.slider.blockSignals(True)
             self.slider.setRange(0, len(self.vtk_files) - 1)
+            self.slider.setValue(len(self.vtk_files) - 1) # Set to last step
+            self.slider.setEnabled(True)
+            self.slider.blockSignals(False)
             
-            # Auto-set to last step
+            # Initial Load (Last Step for preview)
             last_step = len(self.vtk_files) - 1
-            self.slider.setValue(last_step)
             self.set_step(last_step, force_reset=True)
+            
+            # Start Background Loader for the rest
+            self.loader_thread = ResultLoaderThread(self.vtk_files, self._mesh_cache)
+            self.loader_thread.progress_updated.connect(self._on_loader_progress)
+            self.loader_thread.finished_loading.connect(self._on_loader_finished)
+            self.loader_thread.start()
+            
+            self.loading_overlay.show()
+            self.loading_overlay.setText("⏳ Pre-loading steps in background: 0%")
             
         else:
             self.loading_overlay.hide()
@@ -224,60 +266,16 @@ class ResultViewer(QWidget):
                     "Ensure FEBio output is set to VTK in template.", 
                     position='upper_left', font_size=10)
 
-    def _precache_all_steps(self):
-        """Pre-cache all VTK steps (warp + edges) with loading indicator."""
-        if not self.vtk_files:
-            return
-            
-        self._init_plotter()
+    def _on_loader_progress(self, current, total):
+        pct = int(current / total * 100)
+        self.loading_overlay.setText(f"⏳ Pre-loading steps in background: {pct}%")
         
-        # Show loading overlay
-        self.loading_overlay.setText(f"⏳ Loading {len(self.vtk_files)} time steps...")
-        self.loading_overlay.show()
-        QApplication.processEvents()
-        
-        total = len(self.vtk_files)
-        for i, vtk_path in enumerate(self.vtk_files):
-            # Update loading text with progress
-            self.loading_overlay.setText(f"⏳ Loading step {i+1}/{total}...")
-            QApplication.processEvents()
-            
-            try:
-                # Read and cache raw mesh
-                if vtk_path not in self._mesh_cache:
-                    self._mesh_cache[vtk_path] = pv.read(vtk_path)
-                
-                raw_mesh = self._mesh_cache[vtk_path]
-                
-                # Compute and cache warped mesh
-                if vtk_path not in self._warped_cache:
-                    if "displacement" in raw_mesh.point_data:
-                        try:
-                            warped = raw_mesh.warp_by_vector("displacement")
-                        except Exception:
-                            warped = raw_mesh
-                    else:
-                        warped = raw_mesh
-                    self._warped_cache[vtk_path] = warped
-                
-                # Compute and cache edges
-                if vtk_path not in self._edge_cache:
-                    warped = self._warped_cache[vtk_path]
-                    edge_mesh = warped
-                    if hasattr(warped, 'linear_copy'):
-                        try:
-                            edge_mesh = warped.linear_copy()
-                        except Exception:
-                            pass
-                    edges = edge_mesh.extract_all_edges()
-                    self._edge_cache[vtk_path] = edges
-                    
-            except Exception as e:
-                print(f"Pre-cache error for {vtk_path}: {e}")
-        
-        # Hide loading overlay
+    def _on_loader_finished(self):
+        self.loading_overlay.setText("✅ All steps loaded")
+        # Hide after 2 seconds
+        # QTimer.singleShot(2000, self.loading_overlay.hide) 
+        # For now just hide immediately to avoid clutter
         self.loading_overlay.hide()
-        QApplication.processEvents()
 
     def set_step(self, step_index, force_reset=False):
         if not self.vtk_files or step_index < 0 or step_index >= len(self.vtk_files):
@@ -301,9 +299,18 @@ class ResultViewer(QWidget):
             if file_path in self._mesh_cache:
                 self.mesh = self._mesh_cache[file_path]
             else:
-                self.mesh = pv.read(file_path)
-                self._mesh_cache[file_path] = self.mesh
-            
+                # Cache miss: Load immediately (User wants to see THIS step NOW)
+                # This might block GUI briefly, but it's necessary for responsiveness
+                try:
+                    self.mesh = pv.read(file_path)
+                    # If it's a valid result file (has displacement), add to cache
+                    if "displacement" in self.mesh.point_data:
+                        self._mesh_cache[file_path] = self.mesh
+                except BaseException as e:
+                    # If read fails, maybe partial file or other issue
+                    print(f"Immediate load failed for {file_path}: {e}")
+                    return
+
             # Compute warped mesh on-demand (not cached for memory efficiency)
             if "displacement" in self.mesh.point_data:
                 try:
@@ -411,13 +418,14 @@ class ResultViewer(QWidget):
         self._display_mesh(is_result=True, reset_cam=False)
 
     def clear(self):
+        if self.loader_thread and self.loader_thread.isRunning():
+            self.loader_thread.stop()
+            
         if self.plotter:
             self.plotter.clear()
         self.field_combo.clear()
         self.vtk_files = []
         self._mesh_cache.clear()
-        self._warped_cache.clear()
-        self._edge_cache.clear()
         self.mesh = None
         self._current_warped = None
         self.slider.setEnabled(False)
