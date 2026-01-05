@@ -6,7 +6,11 @@
 
 ## 1. 環境構築
 
-> VEXIS-CAEを実行するには、ソルバーである **FEBio Studio** のインストールが必要です。
+> [!TIP]
+> **ポータブル版（ソルバー同梱版）を使用する場合**: 以下の手順（FEBio Studioの個別インストール）は不要です。そのまま **Step 4** へ進んでください。
+
+VEXIS-CAEを実行するには、ソルバーである **FEBio Studio** のインストールが必要です。
+
 
 ### 1-1. FEBio Studioのインストール
 1. [FEBio Software Center](https://febio.org/downloads/) から、OSに合わせた最新の FEBio Studio をダウンロードします。

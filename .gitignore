@@ -167,3 +167,5 @@ feb_files.csv
 !template.feb
 !template2.feb
 test/*.feb
+solver/
+
