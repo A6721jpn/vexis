@@ -63,10 +63,7 @@ class MainWindow(QMainWindow):
         self._init_existing_jobs()
         self.file_watcher.start()
         
-        # Auto-select first job on startup if exists
-        if self.job_list_widget.count() > 0:
-            self.job_list_widget.setCurrentRow(0)
-            self.on_job_selected(0)
+        # Start with no job selected (show logo placeholder)
         
     def _setup_ui(self):
         central_widget = QWidget()
@@ -122,9 +119,24 @@ class MainWindow(QMainWindow):
         # Right Panel: Preview (Stacked)
         self.preview_stack = QStackedWidget()
         
-        # Panel 1: Placeholder/Empty
-        self.empty_panel = QLabel("Select a job to preview")
+        # Panel 1: Placeholder/Empty with logo
+        self.empty_panel = QLabel()
         self.empty_panel.setAlignment(Qt.AlignCenter)
+        self.empty_panel.setStyleSheet("background-color: #0B0F14;")
+        
+        # Load logo for placeholder
+        import sys
+        if getattr(sys, 'frozen', False):
+            logo_root = os.path.dirname(sys.executable)
+        else:
+            logo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        logo_path = os.path.join(logo_root, "doc", "VEXIS-CAE-LOGO-LARGE.png")
+        if os.path.exists(logo_path):
+            logo_pix = QPixmap(logo_path).scaled(400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.empty_panel.setPixmap(logo_pix)
+        else:
+            self.empty_panel.setText("Select a job to preview")
+        
         self.preview_stack.addWidget(self.empty_panel)
         
         # Panel 2: Mesh Preview

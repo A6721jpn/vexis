@@ -33,8 +33,6 @@ class ResultViewer(QWidget):
         self._plotter_initialized = False
         self.vtk_files = []
         self._mesh_cache = {}      # Raw VTK file cache
-        self._warped_cache = {}    # Warped (deformed) mesh cache
-        self._edge_cache = {}      # Edge extraction cache
         self.current_step = 0
         self._setup_ui()
 
@@ -69,6 +67,7 @@ class ResultViewer(QWidget):
         
         ctrl_layout.addWidget(QLabel("Field:"))
         self.field_combo = QComboBox()
+        self.field_combo.setMinimumWidth(150)  # Ensure enough space for field names
         self.field_combo.currentTextChanged.connect(self.on_field_changed)
         ctrl_layout.addWidget(self.field_combo)
         
@@ -130,10 +129,8 @@ class ResultViewer(QWidget):
 
     def load_result(self, job_name, result_dir, temp_dir):
         """Load both graph and 3D result for a job."""
-        # Clear all caches for new job
+        # Clear cache for new job
         self._mesh_cache.clear()
-        self._warped_cache.clear()
-        self._edge_cache.clear()
         self._temp_dir = temp_dir
         self._job_name = job_name
         
@@ -192,30 +189,14 @@ class ResultViewer(QWidget):
                     if "displacement" not in mesh.point_data:
                         continue
                     
-                    # Cache raw mesh
+                    # Cache raw mesh only (no warp/edge pre-computation for speed)
                     self._mesh_cache[vtk_path] = mesh
-                    
-                    # Compute and cache warped mesh
-                    try:
-                        warped = mesh.warp_by_vector("displacement")
-                    except Exception:
-                        warped = mesh
-                    self._warped_cache[vtk_path] = warped
-                    
-                    # Compute and cache edges
-                    edge_mesh = warped
-                    if hasattr(warped, 'linear_copy'):
-                        try:
-                            edge_mesh = warped.linear_copy()
-                        except Exception:
-                            pass
-                    edges = edge_mesh.extract_all_edges()
-                    self._edge_cache[vtk_path] = edges
                     
                     # Add to valid file list
                     self.vtk_files.append(vtk_path)
                     
-                except Exception as e:
+                except BaseException as e:
+                    # Catch all errors including VTK/C++ level errors
                     print(f"Load error for {vtk_path}: {e}")
             
             self.loading_overlay.hide()
@@ -310,40 +291,38 @@ class ResultViewer(QWidget):
         self._load_mesh_file(vtk_path, is_result=True, reset_cam=force_reset)
 
     def _load_mesh_file(self, file_path, is_result=True, reset_cam=True):
-        """Load a mesh file (VTK, etc). Uses caching for raw and warped meshes."""
+        """Load a mesh file (VTK, etc). Uses caching for raw mesh."""
         self._init_plotter()
         if not self.plotter:
             return
             
         try:
-            # Check warped cache first (fastest path)
-            if file_path in self._warped_cache:
-                self.mesh = self._mesh_cache.get(file_path)
-                self._current_warped = self._warped_cache[file_path]
+            # Check raw cache
+            if file_path in self._mesh_cache:
+                self.mesh = self._mesh_cache[file_path]
             else:
-                # Check raw cache
-                if file_path in self._mesh_cache:
-                    self.mesh = self._mesh_cache[file_path]
-                else:
-                    self.mesh = pv.read(file_path)
-                    self._mesh_cache[file_path] = self.mesh
-                
-                # Compute and cache warped mesh
-                if "displacement" in self.mesh.point_data:
-                    try:
-                        self._current_warped = self.mesh.warp_by_vector("displacement")
-                    except Exception as e:
-                        print(f"Warp error: {e}")
-                        self._current_warped = self.mesh
-                else:
+                self.mesh = pv.read(file_path)
+                self._mesh_cache[file_path] = self.mesh
+            
+            # Compute warped mesh on-demand (not cached for memory efficiency)
+            if "displacement" in self.mesh.point_data:
+                try:
+                    self._current_warped = self.mesh.warp_by_vector("displacement")
+                except Exception as e:
+                    print(f"Warp error: {e}")
                     self._current_warped = self.mesh
-                self._warped_cache[file_path] = self._current_warped
+            else:
+                self._current_warped = self.mesh
                 
             self._display_mesh(is_result=is_result, reset_cam=reset_cam)
         except Exception as e:
             print(f"Mesh load error: {e}")
-            self.plotter.clear()
-            self.plotter.add_text(f"Error: {str(e)}", position='upper_left')
+            try:
+                if self.plotter:
+                    self.plotter.clear()
+                    self.plotter.add_text(f"Error: {str(e)}", position='upper_left')
+            except Exception:
+                pass  # Plotter may be closed during shutdown
 
     def _display_mesh(self, is_result=True, reset_cam=True):
         """Display the loaded mesh with field selection."""
@@ -352,10 +331,12 @@ class ResultViewer(QWidget):
             
         # Store current camera position if not resetting
         camera = None
-        if not reset_cam:
-            camera = self.plotter.camera_position
-
-        self.plotter.clear()
+        try:
+            if not reset_cam:
+                camera = self.plotter.camera_position
+            self.plotter.clear()
+        except Exception:
+            return  # Plotter may be closed during shutdown
         
         # Update field combo only if needed (to avoid flickering logic, or just refresh)
         current_field = self.field_combo.currentText()
@@ -403,26 +384,12 @@ class ResultViewer(QWidget):
             else:
                 self.plotter.add_text("Mesh preview (analysis mesh)", position='upper_left', font_size=10, color='white')
         
-        # Explicitly extract and show edges to preserve Hex structure
-        # Use cache to avoid recomputing edges every frame
+        # Show edges using PyVista's built-in parameter (faster than manual extraction)
+        # Note: This shows triangulation edges, but is much faster
         if show_edges and display_mesh is not None:
-            # Generate cache key from current vtk file
-            cache_key = self.vtk_files[self.current_step] if self.vtk_files else id(display_mesh)
-            
-            if cache_key in self._edge_cache:
-                edges = self._edge_cache[cache_key]
-            else:
-                # Attempt to use linear_copy to avoid showing diagonals of quadratic faces
-                edge_mesh = display_mesh
-                if hasattr(display_mesh, 'linear_copy'):
-                    try:
-                        edge_mesh = display_mesh.linear_copy()
-                    except Exception:
-                        pass
-                edges = edge_mesh.extract_all_edges()
-                self._edge_cache[cache_key] = edges
-            
-            self.plotter.add_mesh(edges, color="black", line_width=1)
+            # Add edge overlay
+            self.plotter.add_mesh(display_mesh.extract_surface(), style='wireframe', 
+                                  color='black', line_width=0.5, opacity=0.3)
         
         if reset_cam:
             self.plotter.reset_camera()
