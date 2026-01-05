@@ -1,5 +1,6 @@
 import os
 import glob
+import re
 import uuid
 import time
 import yaml
@@ -239,9 +240,17 @@ class JobManager(QObject):
             
         if self.worker and self.worker.isRunning():
             return
-            
+        
+        # Natural sort key function (same as GUI list)
+        def natural_sort_key(job):
+            return [int(text) if text.isdigit() else text.lower()
+                    for text in re.split('([0-9]+)', job.name)]
+        
+        # Sort jobs by name in natural order before finding next PENDING
+        sorted_jobs = sorted(self.jobs.values(), key=natural_sort_key)
+        
         next_job = None
-        for job in self.jobs.values():
+        for job in sorted_jobs:
             if job.status == JobStatus.PENDING:
                 next_job = job
                 break

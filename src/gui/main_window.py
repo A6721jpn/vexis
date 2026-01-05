@@ -63,6 +63,11 @@ class MainWindow(QMainWindow):
         self._init_existing_jobs()
         self.file_watcher.start()
         
+        # Auto-select first job on startup if exists
+        if self.job_list_widget.count() > 0:
+            self.job_list_widget.setCurrentRow(0)
+            self.on_job_selected(0)
+        
     def _setup_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)

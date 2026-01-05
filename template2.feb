@@ -40761,7 +40761,7 @@
 		<plotfile type="vtk">
 			<var type="displacement"/>
 			<var type="stress"/>
-			<var type="relative volume"/>
+			<var type="Lagrange strain"/>
 		</plotfile>
 		<logfile file="rigid_body_data.txt">
 			<rigid_body_data data="z;Fz" name="KEYCAP"/>

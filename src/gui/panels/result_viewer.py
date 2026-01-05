@@ -281,7 +281,8 @@ class ResultViewer(QWidget):
         self.time_label.setText(f"Step: {step_index + 1} / {len(self.vtk_files)}")
         
         vtk_path = self.vtk_files[step_index]
-        self._load_mesh_file(vtk_path, is_result=True, reset_cam=(step_index == 0) or force_reset)
+        # Only reset camera on explicit force_reset (initial load), not every time step 0 is shown
+        self._load_mesh_file(vtk_path, is_result=True, reset_cam=force_reset)
 
     def _load_mesh_file(self, file_path, is_result=True, reset_cam=True):
         """Load a mesh file (VTK, etc). Uses caching for raw and warped meshes."""
