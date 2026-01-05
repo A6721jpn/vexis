@@ -229,16 +229,26 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
             f_global.write(f"\n--- Solver Log for {base_name} ---\n")
             f_global.flush()
 
-            proc = subprocess.Popen(
-                cmd, 
-                env=env, # Restore missing environment
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.STDOUT, 
-                cwd=result_dir, 
-                text=True, 
-                bufsize=1,
-                creationflags=cflags
-            )
+            f_global.write(f"DEBUG: CMD = {cmd}\n")
+            f_global.write(f"DEBUG: CWD = {result_dir}\n")
+            f_global.flush()
+
+            try:
+                proc = subprocess.Popen(
+                    cmd, 
+                    env=env,
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT, 
+                    cwd=result_dir, 
+                    text=True, 
+                    bufsize=1,
+                    creationflags=cflags
+                )
+            except Exception as e:
+                f_global.write(f"!!! Popen Failed: {e} !!!\n")
+                f_global.flush()
+                raise e
+
             
             for line in proc.stdout:
                 # Check external stop request (GUI)
@@ -289,15 +299,35 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
         if proc.returncode != 0:
             return False
             
-    except KeyboardInterrupt as e:
-        if proc: proc.kill()
+    except Exception as e:
+        if proc and proc.poll() is None:
+            proc.kill()
         if solver_bar: solver_bar.close()
-        if str(e) != "SkipJob": raise e
-        return False
+        
+        # Log error to global log if possible
+        try:
+            with open(GLOBAL_LOG_PATH, "a", encoding="utf-8") as f_err:
+                f_err.write(f"!!! Solver Exception: {str(e)} !!!\n")
+        except:
+            pass
+
+        if isinstance(e, KeyboardInterrupt) and str(e) == "SkipJob":
+            return False
+        
+        if not progress_callback: # CLI
+             print(f"Solver error: {e}")
+        
+        # Re-raise if it's not a handled skip
+        if isinstance(e, KeyboardInterrupt) and str(e) != "SkipJob":
+            raise e
+        
+        # For GUI worker to catch
+        raise e
     finally:
         if proc and proc.poll() is None:
             proc.kill()
         if solver_bar: solver_bar.close()
+
 
     
     # 2. Extract Results
