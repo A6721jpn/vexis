@@ -138,6 +138,10 @@ htmlcov/
 *.log
 *.tmp
 *.swp
+test/
+!dev_log/
+
+
 
 # --- OS junk ---
 .DS_Store
