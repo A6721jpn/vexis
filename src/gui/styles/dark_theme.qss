@@ -179,3 +179,17 @@ QListWidget::item:focus {
 QListWidget::item:selected:focus {
     outline: none;
 }
+
+/* =========================================================
+   PyVista 3D Viewer Theme (Parsed by Python)
+   Format: key: value
+   ========================================================= */
+/* @PYVISTA_THEME_START
+background_top: #1a1a2e
+background_bottom: #0f0f1a
+legend_text_color: #cccccc
+legend_title_size: 18
+legend_label_size: 14
+edge_color: #333333
+colormap: turbo
+@PYVISTA_THEME_END */

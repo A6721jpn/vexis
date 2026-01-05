@@ -380,12 +380,19 @@ class MainWindow(QMainWindow):
             self.preview_stack.setCurrentIndex(0)
             return
 
-        # Check if result file exists (regardless of status)
-        # Note: We duplicate some logic from ResultViewer.load_result here for the check, 
-        # or we can just try to load it. 
-        # Better approach: Check file existence here to decide View.
-        
-        has_result = False
+        # Priority 1: PENDING jobs always show STEP preview
+        if job.status == JobStatus.PENDING:
+            self.preview_stack.setCurrentWidget(self.mesh_panel)
+            self.mesh_panel.load_step(job.step_path)
+            return
+            
+        # Priority 2: RUNNING jobs show progress/log panel
+        if job.status == JobStatus.RUNNING:
+            self.preview_stack.setCurrentWidget(self.progress_panel)
+            self.progress_panel.set_job_info(job.name, job.status_text, job.progress)
+            return
+
+        # Priority 3: For COMPLETED/SKIPPED/STOPPED/ERROR - check if result file exists
         import os
         base = job.name
         possible_paths = [
@@ -395,7 +402,7 @@ class MainWindow(QMainWindow):
             os.path.join(os.getcwd(), "temp", f"{base}.xplt"),
         ]
         
-        # If job object has paths, check them too
+        has_result = False
         if job.result_path and os.path.exists(job.result_path):
              has_result = True
         else:
@@ -406,16 +413,10 @@ class MainWindow(QMainWindow):
             
         if has_result:
             self.preview_stack.setCurrentWidget(self.result_panel)
-            # Pass explicit paths as required by new signature
             self.result_panel.load_result(job.name, self.result_dir, self.temp_dir)
-            
-        elif job.status == JobStatus.RUNNING:
-            self.preview_stack.setCurrentWidget(self.progress_panel)
-            self.progress_panel.set_job_info(job.name, job.status_text, job.progress)
-            
         else:
+            # No result file - show STEP as fallback
             self.preview_stack.setCurrentWidget(self.mesh_panel)
-            # Always load STEP for pre-analysis/pending jobs
             self.mesh_panel.load_step(job.step_path)
 
     def on_start_clicked(self):
