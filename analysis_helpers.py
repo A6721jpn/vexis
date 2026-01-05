@@ -174,16 +174,26 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
     log_file = os.path.join(result_dir, log_name)
     
     if not febio_exe:
-        # 1. Check local 'solver' directory (Portable)
-        local_solver = os.path.join(BASE_DIR, "solver", "febio4.exe")
-        if os.path.exists(local_solver):
-            febio_exe = local_solver
-        # 2. Check Environment Variable
-        elif os.environ.get("FEBIO_PATH"):
-            febio_exe = os.environ["FEBIO_PATH"]
+        # Priority:
+        # 1. External 'solver' directory next to the EXE (Portable mode / User override)
+        # 2. Bundled 'solver' directory (PyInstaller internal - if any)
         # 3. Default System Path
+        
+        candidates = [
+            os.path.join(BASE_DIR, "solver", "febio4.exe"), # External Or Bundled (root)
+            r"C:\Program Files\FEBioStudio\bin\febio4.exe"  # Default Install
+        ]
+        
+        if os.environ.get("FEBIO_PATH"):
+            candidates.insert(0, os.environ["FEBIO_PATH"])
+
+        for path in candidates:
+            if os.path.exists(path):
+                febio_exe = path
+                break
         else:
-            febio_exe = r"C:\Program Files\FEBioStudio\bin\febio4.exe"
+            febio_exe = candidates[-1] # Fallback to default path string if none exist
+
     
     cmd = [febio_exe, "-i", feb_path]
 
