@@ -106,17 +106,21 @@ class ResultViewer(QWidget):
         ctrl_layout = QHBoxLayout()
         
         self.job_label = QLabel("No Job Selected")
-        self.job_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        self.job_label.setStyleSheet("font-weight: bold; font-size: 22px;")
         ctrl_layout.addWidget(self.job_label)
         
-        ctrl_layout.addStretch()
-
-        # Field Selector (for 3D view)
-        ctrl_layout.addWidget(QLabel("Field:"))
+        # Field Selector (next to job name on left)
+        ctrl_layout.addSpacing(20)
+        field_label = QLabel("Field:")
+        field_label.setStyleSheet("font-size: 14px;")
+        ctrl_layout.addWidget(field_label)
         self.field_combo = QComboBox()
-        self.field_combo.setMinimumWidth(180)
+        self.field_combo.setMinimumWidth(200)
+        self.field_combo.setStyleSheet("font-size: 14px;")
         self.field_combo.currentTextChanged.connect(self.on_field_changed)
         ctrl_layout.addWidget(self.field_combo)
+        
+        ctrl_layout.addStretch()
 
         layout.addLayout(ctrl_layout)
 

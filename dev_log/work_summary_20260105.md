@@ -40,3 +40,54 @@ VEXIS-CAE のドキュメント整備、バージョン管理の刷新、およ�
 ## 成果物
 - ドキュメント一式 (`doc/`) および開発ログ (`dev_log/`) が最新の状態に更新され、GitHub に反映済み。
 - リポジトリが整理され、開発環境のポータビリティが向上。
+
+---
+
+## 5. Waffleiron ライブラリの統合と .xplt ファイル対応
+
+### 5.1 Waffleiron のベンダリングと依存関係の調整
+- FEBio の `.xplt` バイナリ形式を直接読み込むため、**waffleiron** ライブラリを `src/libs/waffleiron/` にベンダリング。
+- 不要な依存関係（`chaospy`, `psutil`, `shapely`）をオプション化し、インポートエラーを回避。
+- xplt.py の `SUPPORTED_XPLT_VERSIONS` に **バージョン53** を追加し、最新の FEBio 出力形式に対応。
+
+### 5.2 xplt_loader の実装
+- `src/utils/xplt_loader.py` に **WaffleironLoader** クラスを新規作成。
+- PyVista `UnstructuredGrid` への変換機能を実装。
+- **ドメインデータのマッピング問題を修正**: 剛体要素（KEYCAP）と変形可能要素（RUBBER/MEMBRANE）の順序不一致を解決。剛体要素数（800）をオフセットとして使用し、応力/ひずみデータを正しい位置に配置。
+
+### 5.3 FEBio テンプレートの更新
+- `template2.feb` の Output セクションに以下を追加:
+  - `displacement` (変位)
+  - `stress` (応力)
+  - `Lagrange strain` (ラグランジュひずみ)
+
+## 6. ResultViewer の全面リファクタリング
+
+### 6.1 タブ切り替え表示
+- **3D Contour タブ**: PyVista による 3D コンター表示
+- **Load-Displacement Graph タブ**: PNG グラフ画像の表示
+
+### 6.2 テーマ設定の統合
+- `dark_theme.qss` に PyVista 用設定ブロック `@PYVISTA_THEME_START ... @PYVISTA_THEME_END` を追加。
+- 背景グラデーション色、凡例テキスト色、カラーマップを QSS ファイルから読み込み可能に。
+
+### 6.3 フィールド選択ドロップダウン
+- displacement, stress, Lagrange strain などを選択可能に。
+- ドロップダウンとラベルを左寄せに配置、フォントサイズを拡大。
+
+### 6.4 時刻スライダー
+- タイムステップをスクラブ可能なスライダーを実装。
+- 現在時刻と総ステップ数を表示。
+
+## 7. ジョブ管理の改善
+
+### 7.1 スキップ/停止機能の修正
+- `AnalysisWorker.skip()` と `run()` メソッドの競合を修正。
+- `_skipped` フラグを適切に初期化し、終了シグナルの二重送信を防止。
+
+### 7.2 部分結果の表示対応
+- `MainWindow.on_job_selected` を改修し、PENDING 状態では STEP プレビュー、その他の状態では .xplt ファイルが存在すれば結果表示を行うように変更。
+
+## 8. UI/UX の改善
+- 結果ビューアの解析ケース名フォントを **22px** に拡大。
+- Field ドロップダウンを左寄せに移動し、フォントサイズを **14px** に統一。
