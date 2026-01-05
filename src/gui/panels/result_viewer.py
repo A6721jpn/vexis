@@ -406,9 +406,7 @@ class ResultViewer(QWidget):
                     show_edges=True,
                     edge_color=edge_color,
                     line_width=0.5,
-                    scalar_bar_args=sbar_args,
-                    nan_opacity=0.0,  # Make NaN cells transparent
-                    clim=None  # Auto-range (excludes NaN)
+                    scalar_bar_args=sbar_args
                 )
             else:
                 self.plotter.add_mesh(
