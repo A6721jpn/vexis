@@ -93,18 +93,16 @@ def run_meshing(step_file, config, temp_dir, log_callback=None):
         try:
             # Use Popen to capture logs in real-time for GUI
             # Use CREATE_NO_WINDOW to hide blank console on Windows
-            startupinfo = None
+            cflags = 0
             if os.name == 'nt':
-                import subprocess as sp
-                startupinfo = sp.STARTUPINFO()
-                startupinfo.dwFlags |= sp.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = sp.SW_HIDE
+                cflags = 0x08000000 # CREATE_NO_WINDOW
 
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
                 text=True, bufsize=1, 
-                startupinfo=startupinfo
+                creationflags=cflags
             )
+
             for line in proc.stdout:
 
                 f_log.write(line)
@@ -220,35 +218,40 @@ def run_solver_and_extract(feb_path, result_dir, num_threads=None, febio_exe=Non
     proc = None
     last_refresh_time = time.time()
     
+    cflags = 0
+    if os.name == 'nt':
+        cflags = 0x08000000 # CREATE_NO_WINDOW
+
+    os.makedirs(os.path.dirname(os.path.abspath(GLOBAL_LOG_PATH)), exist_ok=True)
+    
     try:
-        with open(log_file, "w") as f_log:
-            # Use CREATE_NO_WINDOW for FEBio solver on Windows
-            startupinfo = None
-            if os.name == 'nt':
-                import subprocess as sp
-                startupinfo = sp.STARTUPINFO()
-                startupinfo.dwFlags |= sp.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = sp.SW_HIDE
+        with open(log_file, "w") as f_log, open(GLOBAL_LOG_PATH, "a", encoding="utf-8") as f_global:
+            f_global.write(f"\n--- Solver Log for {base_name} ---\n")
+            f_global.flush()
 
             proc = subprocess.Popen(
                 cmd, 
+                env=env, # Restore missing environment
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.STDOUT, 
                 cwd=result_dir, 
                 text=True, 
                 bufsize=1,
-                startupinfo=startupinfo
+                creationflags=cflags
             )
             
             for line in proc.stdout:
                 # Check external stop request (GUI)
                 if check_stop_callback and check_stop_callback():
                     proc.kill()
+                    f_global.write("!!! Solver Stopped by User !!!\n")
                     return False
 
-                f_log.write(line) 
+                f_log.write(line)
+                f_global.write(line) # Also log to global workflow log
                 if log_callback:
                     log_callback(line.strip())
+
                 
                 # Update Progress
                 if "time" in line:
