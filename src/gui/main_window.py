@@ -1,5 +1,6 @@
 import os
-import sys # Added for frozen check
+import sys
+import re
 import glob
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QDockWidget, QListWidget, QListWidgetItem, QStackedWidget, 
@@ -260,9 +261,7 @@ class MainWindow(QMainWindow):
     @Slot(JobItem)
     def _on_job_added(self, job):
         self.jobs[job.id] = job
-        list_item = QListWidgetItem(f"{job.name} [{job.display_status()}]")
-        list_item.setData(Qt.UserRole, job.id)
-        self.job_list_widget.addItem(list_item)
+        self._refresh_list_ui()
 
     @Slot(str)
     def _on_job_removed(self, job_id):
@@ -324,11 +323,25 @@ class MainWindow(QMainWindow):
         self.batch_status.setText(f"{completed} / {total} completed")
 
     def _refresh_list_ui(self):
+        current_id = self._get_current_job_id()
+        self.job_list_widget.blockSignals(True)
         self.job_list_widget.clear()
-        for job in self.jobs.values():
+        
+        def natural_sort_key(s):
+            return [int(text) if text.isdigit() else text.lower()
+                    for text in re.split('([0-9]+)', s)]
+        
+        sorted_jobs = sorted(self.jobs.values(), key=lambda j: natural_sort_key(j.name))
+        
+        for job in sorted_jobs:
             list_item = QListWidgetItem(f"{job.name} [{job.display_status()}]")
             list_item.setData(Qt.UserRole, job.id)
             self.job_list_widget.addItem(list_item)
+            
+            if job.id == current_id:
+                self.job_list_widget.setCurrentItem(list_item)
+                
+        self.job_list_widget.blockSignals(False)
         self._update_batch_progress()
 
     def _get_current_job_id(self):
