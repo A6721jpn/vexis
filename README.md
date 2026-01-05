@@ -54,8 +54,9 @@ python main.py
 
 For more detailed information, please refer to the following documents:
 
-- [GUI Reference Manual (JA)](doc/gui_reference_ja.md): Detailed explanation of GUI elements.
+- [Workflow Guide (JA)](doc/workflow_guide_ja.md): Installation, data prep, and GUI reference.
 - [Release Notes](doc/release_notes.md): Version history and changes.
+
 
 
 
