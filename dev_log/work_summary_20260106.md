@@ -64,3 +64,41 @@ VEXIS-CAE v1.2.0 → v1.3.0 リリース作業
 | `src/mesh_swap/result_analysis/extract_results.py` | parse_rigid_body_data 追加        |
 | `doc/febio_optimization_report.md`                 | 新規                              |
 | `doc/release_notes.md`                             | v1.3.0 追加                       |
+
+---
+
+## v1.3.1 コードクリーンアップ (夜間作業)
+
+### デッドコード削除 ✅
+- **テストファイル削除**: `generate_adaptor_sample.py` を削除
+  - pyfebioを使った適応的メッシュリファインメントのサンプル生成スクリプト
+  - 未実装機能の研究コードのため削除
+- **未使用インポート削除**: `analysis_helpers.py` から `msvcrt` を削除
+- **重複インポート修正**: `src/gui/main_window.py` の `ProgressPanel` 3重インポートを1つに整理
+
+### デバッグコード削除 ✅
+- **gui_main.py**: DEBUGプリント文 5箇所を削除
+  - QApplication生成、スタイルシート読み込み、アイコン設定、スプラッシュ表示
+- **コメントアウトコード削除**:
+  - `gui_main.py`: スタイル/アイコン関連のコメント、logging/tracebackインポート
+  - `src/gui/main_window.py`: アイコン設定コード（gui_main.pyに移動済み）
+  - `src/mesh_swap/mesh_replacer.py`: 無効化されたメッシュアライメントブロック（46行）
+
+### ブランチ管理 ✅
+- **Claude_V131 ブランチ作成**: リファクタリング内容を別ブランチで管理
+- コミットメッセージ: "Refactor: Remove unused code and debug statements"
+
+### 変更サマリー
+- **削除行数**: 104行
+- **影響ファイル数**: 5ファイル
+- **機能への影響**: なし（デッドコードのみ削除）
+
+### 変更ファイル一覧
+| ファイル                           | 変更内容                    | 削減行数 |
+| ---------------------------------- | --------------------------- | -------- |
+| `generate_adaptor_sample.py`       | ファイル削除                | -22      |
+| `analysis_helpers.py`              | 未使用インポート削除        | -1       |
+| `gui_main.py`                      | デバッグ・コメント削除      | -32      |
+| `src/gui/main_window.py`           | 重複・コメント削除          | -9       |
+| `src/mesh_swap/mesh_replacer.py`   | 無効化コードブロック削除    | -46      |
+| **合計**                           |                             | **-104** |
