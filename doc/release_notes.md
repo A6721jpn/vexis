@@ -4,7 +4,16 @@
 
 ---
 
-## Version 1.1.2 (Waffleiron 統合と .xplt 直接読み込み) - Current
+## Version 1.2.0 (Anti-sleep 機能とブランチ整理) - Current
+長時間の解析実行を支援する Anti-sleep 機能を追加し、開発ブランチを整理したバージョンです。
+
+- **追加・改善機能:**
+    - **Anti-sleep 機能**: ツールバーにトグルボタンを追加。有効化すると PC のスリープと画面 OFF を防止し、長時間のバッチ解析を中断なく実行可能に。`eye-solid` / `eye-closed` アイコンで状態を視覚化。
+    - **ブランチ整理**: 古い開発ブランチ（AG-GUI, Anti-G, GPT-trial, SOLVER-INCLUDE）を削除し、WAFFLEIRON ブランチを main へマージ。
+
+---
+
+## Version 1.1.2 (Waffleiron 統合と .xplt 直接読み込み)
 FEBio のネイティブ出力形式 `.xplt` を直接読み込む機能を追加し、結果表示のパフォーマンスと柔軟性を大幅に向上させたバージョンです。
 
 - **追加・改善機能:**

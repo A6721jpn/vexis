@@ -15,17 +15,27 @@ VEXIS-CAE v1.2.0 リリース準備
 - `config/config.yaml` ヘッダーコメント更新
 
 ### 新機能: アンチスリープ機能 ✅
-- [x] `src/utils/sleep_manager.py` 新規作成
-- [x] ツールバーにアイコントグルボタン追加（終了ボタンの右隣）
-- [x] `eye-closed.svg` (OFF) / `eye-solid.svg` (ON) で状態を視覚表示
-- [x] クリックで切り替え、既存アイコンと同じ色味
-- [x] アプリ終了時にスリープ設定を復元
+- `src/utils/sleep_manager.py` 新規作成
+- ツールバーにアイコントグルボタン追加（終了ボタンの右隣）
+- `eye-closed.svg` (OFF) / `eye-solid.svg` (ON) で状態を視覚表示
+- クリックで切り替え、既存アイコンと同じ色味で実装
+- ツールチップ: "Anti-sleep ON/OFF"
+- アプリ終了時にスリープ設定を自動復元
+
+### ドキュメント修正
+- `dev_log/todo.md` のアダプティブメッシュMDリンクを相対パスに修正
+- `doc/release_notes.md` v1.2.0セクション追加
 
 ## 技術メモ
 Windows API `SetThreadExecutionState` を使用してスリープを制御
+- `ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED`
 
 ## 変更ファイル
-- `src/version.py` - バージョン番号更新
-- `config/config.yaml` - ヘッダーコメント更新
-- `src/utils/sleep_manager.py` - 新規作成
-- `src/gui/main_window.py` - チェックボックスUI追加
+| ファイル                     | 変更内容             |
+| ---------------------------- | -------------------- |
+| `src/version.py`             | バージョン番号 1.2.0 |
+| `config/config.yaml`         | ヘッダーコメント更新 |
+| `src/utils/sleep_manager.py` | 新規作成             |
+| `src/gui/main_window.py`     | アイコントグル追加   |
+| `dev_log/todo.md`            | リンク修正           |
+| `doc/release_notes.md`       | v1.2.0追加           |
