@@ -149,52 +149,6 @@ def replace_mesh(tree, new_nodes, new_elements, part_name, elem_type="hex8"):
     mesh_section.insert(node_idx, target_nodes_node)
     print(f"Moved <Nodes name='{part_name}'> to index {node_idx} of <Mesh> section.")
     
-    # Auto-Align: Shift new_nodes to match Centroid XY and Base Z of old_nodes
-    # [DISABLED] 2024-12-18: Causing harmful center offset when mesh sizes differ.
-    # if len(old_coords) > 0 and len(new_nodes) > 0:
-    #     try:
-    #         old_arr = np.array(old_coords)
-    #         new_arr = np.array(new_nodes)
-    #         
-    #         # Auto-Align: Shift new_nodes to match Min-X, Min-Y, and Min-Z of old_nodes
-    #         
-    #         # Recompute Min/Max
-    #         old_min = np.min(old_arr, axis=0)
-    #         new_min = np.min(new_arr, axis=0)
-    #         
-    #         old_max = np.max(old_arr, axis=0)
-    #         
-    #         # Align Min coordinates exactly (Bottom-Left-Front corner)
-    #         shift_x = old_min[0] - new_min[0]
-    #         shift_y = old_min[1] - new_min[1]
-    #         shift_z = old_min[2] - new_min[2]
-    #         
-    #         print(f"Aligning mesh (Min-XYZ): dx={shift_x:.4f}, dy={shift_y:.4f}, dz={shift_z:.4f}")
-    #         
-    #         # Apply shift to NEW NODES directly
-    #         if isinstance(new_nodes, np.ndarray):
-    #             new_nodes[:, 0] += shift_x
-    #             new_nodes[:, 1] += shift_y
-    #             new_nodes[:, 2] += shift_z
-    #         else:
-    #             # Assume list of lists/tuples
-    #             shifted_nodes = []
-    #             for node in new_nodes:
-    #                 shifted_nodes.append([
-    #                     node[0] + shift_x,
-    #                     node[1] + shift_y,
-    #                     node[2] + shift_z
-    #                 ])
-    #             new_nodes = shifted_nodes # Update reference used later
-    # 
-    #         # Check new max Z after shift
-    #         new_max_z = np.max(new_arr, axis=0)[2] + shift_z if isinstance(new_nodes, np.ndarray) else max(n[2] for n in new_nodes)
-    #         chck_msg = f"New Mesh Max Z after alignment: {new_max_z:.6f} (Old Max Z: {old_max[2]:.6f})\n"
-    #         print(chck_msg)
-    # 
-    #     except Exception as e:
-    #         print(f"Warning: Failed to align mesh: {e}")
-
     # FIX: Invert Elements (Winding) if requested (Hack for Negative Jacobian)
     invert_hex8 = False
     if invert_hex8 and elem_type == "hex8" and len(new_elements) > 0:

@@ -2,7 +2,6 @@ import os, subprocess, sys, yaml
 import contextlib
 import felupe as fe
 import re
-import msvcrt
 import lxml.etree as ET
 import time
 from tqdm import tqdm

@@ -14,8 +14,6 @@ from src.gui.file_watcher import InputFolderWatcher
 from src.gui.job_manager import JobManager
 from src.gui.panels.mesh_preview import MeshPreview
 from src.gui.panels.progress_panel import ProgressPanel
-from src.gui.panels.progress_panel import ProgressPanel
-from src.gui.panels.progress_panel import ProgressPanel
 from src.gui.panels.result_viewer import ResultViewer
 from src.gui.about_dialog import AboutDialog
 from src.utils.sleep_manager import prevent_sleep, allow_sleep
@@ -39,12 +37,7 @@ class MainWindow(QMainWindow):
             # Running as Python script
             base_dir = os.path.dirname(os.path.abspath(__file__)) # this is src/gui
             root_dir = os.path.dirname(os.path.dirname(base_dir)) # this is root
-        
-        # Set window icon (Delegated to QApplication in gui_main.py)
-        # icon_path = os.path.join(root_dir, "icon.ico")
-        # if os.path.exists(icon_path):
-        #     self.setWindowIcon(QIcon(icon_path))
-        
+
         self.input_dir = os.path.join(root_dir, "input")
         self.temp_dir = os.path.join(root_dir, "temp")
         self.result_dir = os.path.join(root_dir, "results")

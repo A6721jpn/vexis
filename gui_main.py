@@ -74,31 +74,22 @@ def main():
         windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except ImportError:
         pass
-        
-    print("DEBUG: Creating QApplication")
+
     app = QApplication(sys.argv)
-    print("DEBUG: QApplication created")
-    
+
     # --- Load Stylesheet (QSS) ---
     qss_path = resolve_path(os.path.join("src", "gui", "styles", "dark_theme.qss"))
     if os.path.exists(qss_path):
         with open(qss_path, "r", encoding="utf-8") as f:
             app.setStyleSheet(f.read())
-            # print(f"[style] Loaded QSS: {qss_path}")
-    else:
-        # print(f"[style] Warning: QSS not found at {qss_path}")
-        pass
-    
-    print("DEBUG: Stylesheet loaded")
-    
+
     # --- Resolve Paths & Multi-size Icon Loading ---
     # マルチサイズ対応のマスターICOファイルを優先的に読み込む
     master_icon_path = resolve_path(os.path.join("src", "icons", "icon.ico"))
     app_icon = QIcon()
-    
+
     if os.path.exists(master_icon_path):
         app_icon = QIcon(master_icon_path)
-        # print(f"[icon] Loaded master icon: {master_icon_path}")
     else:
         # 以前のディレクトリ内スキャンをフォールバックとして残す
         icon_dir = resolve_path(os.path.normpath("src/icons"))
@@ -112,14 +103,11 @@ def main():
         icon_path = resolve_path("icon.ico")
         if os.path.exists(icon_path):
             app_icon = QIcon(icon_path)
-            # print("[icon] Fallback to root icon.ico")
 
     icon_status = "Not Found"
     if not app_icon.isNull():
         app.setWindowIcon(app_icon)
         icon_status = f"Loaded ({len(app_icon.availableSizes())} sizes)"
-        # print(f"[icon] Final Status: {icon_status}")
-        # print(f"[icon] Sizes: {app_icon.availableSizes()}")
     else:
         # Final fallback to logo PNG
         logo_path = resolve_path(os.path.join("doc", "VEXIS-CAE-LOGO-LARGE.png"))
@@ -127,8 +115,6 @@ def main():
             app_icon = QIcon(logo_path)
             app.setWindowIcon(app_icon)
             icon_status = "Fallback PNG"
-
-    print("DEBUG: Icon setup done")
 
     # --- Splash Screen Setup ---
     from PySide6.QtWidgets import QSplashScreen
@@ -153,18 +139,12 @@ def main():
         y = (splash_height - logo.height()) // 2 - 20 
         painter.drawPixmap(x, y, logo)
         painter.end()
-    
-    print("DEBUG: Showing Splash")
+
     splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
     splash.show()
-    
-    
-    # import logging
-    # logger = logging.getLogger(__name__)
 
     def show_message(msg):
         print(f"[Startup] {msg}")
-        # logger.info(f"[Startup] {msg}")
         splash.showMessage(msg, Qt.AlignBottom | Qt.AlignCenter, Qt.white)
         app.processEvents()
 
@@ -200,8 +180,6 @@ def main():
         
     except Exception as e:
         print(f"CRASH: {e}")
-        # import traceback
-        # traceback.print_exc()
         splash.showMessage(f"Error: {e}", Qt.AlignBottom | Qt.AlignCenter, Qt.red)
         app.processEvents()
         time.sleep(10) # Wait longer to read
