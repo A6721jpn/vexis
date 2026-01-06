@@ -23,54 +23,24 @@ def load_reference(path):
 
 def find_available_start_id(tree, count, tag_type="node"):
     """
-    Finds a starting ID such that [start, start + count - 1] is available.
-    Tries to fit in gaps to keep IDs compact/ordered.
+    Finds the next available ID for nodes or elements.
+    Uses max(existing_ids) + 1 for simplicity and reliability.
     """
-    # Collect all used IDs for this tag type (node or elem)
     if tag_type == "node":
-        xpath = "//node"
+        xpath = "//node[@id]"
     else:
-        tags = ['elem', 'hex8', 'tet4', 'penta6', 'quad4', 'tri3']
-        xpath = " | ".join([f"//Mesh//{t}" for t in tags])
+        xpath = "//Mesh//elem[@id] | //Mesh//hex8[@id] | //Mesh//tet4[@id] | //Mesh//penta6[@id] | //Mesh//quad4[@id] | //Mesh//tri3[@id]"
     
-    used_ids = set()
-    for el in tree.xpath(xpath):
-        try:
-            used_ids.add(int(el.get("id")))
-        except:
-            pass
-            
-    if not used_ids:
-        return 1
-        
-    # Force using max ID + 1 to ensure monotonicity and avoid conflicts
-    if not used_ids:
-        return 1
-        
-    return max(used_ids) + 1
-    
-    """
-    sorted_ids = sorted(list(used_ids))
-    
-    # Check gap before first ID (if it starts > 1)
-    # But usually we prioritize packing.
-    # Gap check: if sorted_ids[i+1] > sorted_ids[i] + 1 + count
-    # Then we can fit 'count' items starting at sorted_ids[i] + 1.
-    
-    # Check identifying start=1
-    if sorted_ids[0] > count:
-        return 1
-        
-    for i in range(len(sorted_ids) - 1):
-        current = sorted_ids[i]
-        next_val = sorted_ids[i+1]
-        gap_size = next_val - current - 1
-        if gap_size >= count:
-            return current + 1
-            
-    # If no gap, return max + 1
-    return sorted_ids[-1] + 1
-    """
+    ids = [int(el.get("id")) for el in tree.xpath(xpath) if el.get("id")]
+    return max(ids, default=0) + 1
+
+
+def _set_xml_tail(elements, indent="\n\t\t\t", last_indent="\n\t\t"):
+    """Set proper tail (indentation) for a list of XML elements."""
+    for elem in elements[:-1] if elements else []:
+        elem.tail = indent
+    if elements:
+        elements[-1].tail = last_indent
 
 def replace_mesh(tree, new_nodes, new_elements, part_name, elem_type="hex8"):
     """

@@ -1,10 +1,132 @@
 
 import lxml.etree as ET
 import numpy as np
+from abc import ABC, abstractmethod
+
 try:
     from . import geometry_utils
 except ImportError:
     import geometry_utils
+
+
+# =============================================================================
+# Strategy Pattern for Set Reconstruction
+# =============================================================================
+
+class ReconstructionStrategy(ABC):
+    """Base class for set reconstruction strategies."""
+    
+    @abstractmethod
+    def select_faces(self, definition, boundary_faces, centroids, nodes, bbox):
+        """
+        Select faces based on the strategy.
+        
+        Args:
+            definition: Dict with strategy-specific parameters
+            boundary_faces: List of face tuples (node indices)
+            centroids: Array of face centroids (N, 3)
+            nodes: Array of new node coordinates  
+            bbox: Bounding box tuple (min, max)
+            
+        Returns:
+            List of selected face tuples
+        """
+        pass
+
+
+class RelativeBoundsStrategy(ReconstructionStrategy):
+    """Strategy A: Filter faces by relative bounds within bounding box."""
+    
+    def select_faces(self, definition, boundary_faces, centroids, nodes, bbox):
+        rel_bounds = definition.get("relative_bounds", ((0,0,0), (1,1,1)))
+        valid_indices = geometry_utils.filter_nodes_by_relative_bounds(
+            centroids, rel_bounds, bbox
+        )
+        return [boundary_faces[i] for i in valid_indices]
+
+
+class ProximityStrategy(ReconstructionStrategy):
+    """Strategy B: Filter faces by proximity to partner surface."""
+    
+    def select_faces(self, definition, boundary_faces, centroids, nodes, bbox):
+        partner_centroids = definition.get("partner_centroids")
+        if partner_centroids is None or len(partner_centroids) == 0:
+            return []
+        
+        partner_tree = geometry_utils.build_kdtree(partner_centroids)
+        dists, _ = geometry_utils.query_kdtree_distance(partner_tree, centroids)
+        
+        # Tolerance: 5% of bounding box diagonal
+        diag = np.linalg.norm(bbox[1] - bbox[0])
+        tolerance = diag * 0.05
+        
+        valid_indices = np.where(dists < tolerance)[0]
+        return [boundary_faces[i] for i in valid_indices]
+
+
+class GeometricRuleStrategy(ReconstructionStrategy):
+    """Strategy for geometric rules (z_up, z_down, bbox_bottom, etc.)."""
+    
+    def select_faces(self, definition, boundary_faces, centroids, nodes, bbox):
+        rule = definition.get("rule", "")
+        diag = np.linalg.norm(bbox[1] - bbox[0])
+        tol = diag * 0.02
+        min_z = bbox[0][2]
+        
+        selected = []
+        
+        if rule == "bbox_bottom":
+            z_coords = centroids[:, 2]
+            valid_indices = np.where(z_coords < (min_z + tol))[0]
+            selected = [boundary_faces[i] for i in valid_indices]
+            
+        elif rule == "all_except_bottom":
+            z_coords = centroids[:, 2]
+            valid_indices = np.where(z_coords >= (min_z + tol))[0]
+            selected = [boundary_faces[i] for i in valid_indices]
+            
+        elif rule == "all":
+            selected = list(boundary_faces)
+            
+        elif rule == "z_down_except_bottom":
+            tol_excl = diag * 0.001
+            z_coords = centroids[:, 2]
+            candidates = np.where(z_coords >= (min_z + tol_excl))[0]
+            
+            for idx in candidates:
+                face_nodes_idx = boundary_faces[idx]
+                f_coords = nodes[list(face_nodes_idx)]
+                normal = self._calculate_normal(f_coords)
+                if normal[2] < -1e-3:  # Pointing down
+                    selected.append(boundary_faces[idx])
+            print(f"[DEBUG] z_down_except_bottom: Selected {len(selected)} faces.")
+            
+        elif rule == "z_up":
+            for idx in range(len(boundary_faces)):
+                face_nodes_idx = boundary_faces[idx]
+                f_coords = nodes[list(face_nodes_idx)]
+                normal = self._calculate_normal(f_coords)
+                if normal[2] > 1e-3:  # Pointing up
+                    selected.append(boundary_faces[idx])
+            print(f"[DEBUG] z_up: Selected {len(selected)} faces.")
+        
+        return selected
+    
+    def _calculate_normal(self, coords):
+        """Calculate face normal from 4 corner coordinates."""
+        v1 = coords[1] - coords[0]
+        v2 = coords[3] - coords[0]
+        n = np.cross(v1, v2)
+        norm = np.linalg.norm(n)
+        return n / norm if norm > 0 else n
+
+
+# Strategy registry
+_STRATEGIES = {
+    "A": RelativeBoundsStrategy(),
+    "B": ProximityStrategy(),
+    "GeometricRule": GeometricRuleStrategy(),
+}
 
 class SetReconstructor:
     def __init__(self, tree, part_name):
@@ -256,6 +378,7 @@ class SetReconstructor:
     def reconstruct(self, new_nodes, new_elements_connectivity):
         """
         Generates new set definitions based on the new mesh.
+        Uses strategy pattern for cleaner implementation.
         
         Args:
             new_nodes: numpy array (N, 3)
@@ -271,168 +394,35 @@ class SetReconstructor:
         
         # Pre-calculations for new mesh
         new_bbox = geometry_utils.calculate_bounding_box(new_nodes)
-        
-        # For surfaces, we need boundary faces of the new mesh
         new_boundary_faces = geometry_utils.extract_boundary_faces(new_elements_connectivity)
+        new_face_centroids = geometry_utils.calculate_face_centroids(new_nodes, new_boundary_faces)
+        
         print(f"[DEBUG] reconstruct: new_bbox={new_bbox}")
         print(f"[DEBUG] reconstruct: found {len(new_boundary_faces)} boundary faces")
-        
-        # Calculate centroids of these new boundary faces
-        # Note: new_boundary_faces is list of tuples of indices.
-        new_face_centroids = geometry_utils.calculate_face_centroids(new_nodes, new_boundary_faces)
         print(f"[DEBUG] reconstruct: calculated centroids shape={new_face_centroids.shape}")
         
-        # Build KDTree for new faces if we have any Strategy B
-        # Actually, Strategy B searches for *new faces* close to *old partner*.
-        # So we query the PARTNER tree with NEW FACE centroids?
-        # NO. We want to find NEW faces that are close to the partner.
-        # So we iterate NEW faces and check query(partner_kdtree).
-        # Or faster: Build tree of NEW faces, query with OLD partner points? 
-        # No, "Proximity" means: Include new face if dist(new_face, partner) < limit.
-        # This is strictly: For each new face, is it close to partner?
-        # So build KDTree of PARTNER centroids. Query each new face centroid against it.
-        
-        # Iterate definitions
+        # Process each set definition
         for d in self.set_definitions:
             name = d["name"]
+            strategy_key = d["strategy"]
             
             if d["type"] == "NodeSet":
-                if d["strategy"] == "A":
-                    # Filter new nodes by relative bounds
+                if strategy_key == "A":
                     rel_bounds = d["relative_bounds"]
                     indices = geometry_utils.filter_nodes_by_relative_bounds(
                         new_nodes, rel_bounds, new_bbox
                     )
                     results["NodeSet"][name] = indices.tolist()
-            
+                    
             elif d["type"] == "Surface":
-                selected_faces = [] # list of node connectivity tuples
-                
-                if d["strategy"] == "A":
-                    # Filter boundary faces by relative bounds of their centroids
-                    rel_bounds = d["relative_bounds"]
-                    # Check which centroids are in bounds
-                    valid_indices = geometry_utils.filter_nodes_by_relative_bounds(
-                        new_face_centroids, rel_bounds, new_bbox
+                # Use strategy pattern for surface selection
+                strategy = _STRATEGIES.get(strategy_key)
+                if strategy:
+                    selected_faces = strategy.select_faces(
+                        d, new_boundary_faces, new_face_centroids, new_nodes, new_bbox
                     )
-                    for idx in valid_indices:
-                        selected_faces.append(new_boundary_faces[idx])
-                        
-                elif d["strategy"] == "B":
-                    # Proximity check
-                    partner_centroids = d["partner_centroids"]
-                    if partner_centroids is None or len(partner_centroids) == 0:
-                        # Fallback to A if partner missing
-                        continue
-                        
-                    # Build Tree of Partner Centroids
-                    partner_tree = geometry_utils.build_kdtree(partner_centroids)
-                    
-                    # Query all new face centroids
-                    dists, _ = geometry_utils.query_kdtree_distance(partner_tree, new_face_centroids)
-                    
-                    # Threshold: Max gap in original + 20%? 
-                    # Or simpler: A generic tolerance like 1.0mm?
-                    # Ideally, we inferred the gap from the original mesh, but for now fixed tolerance.
-                    # Or better: The contact gap.
-                    # Let's use a small tolerance assuming contact means *touching* or very close.
-                    TOLERANCE = 0.5 # Unit specific, careful.
-                    # Ideally we read unit from file or use a % of bbox.
-                    diag = np.linalg.norm(new_bbox[1] - new_bbox[0])
-                    TOLERANCE = diag * 0.05 # 5% of diagonal? 
-                    
-                    # Refinement: Users usually want surfaces that were *originally* in contact.
-                    # If the gap was large, 5% might be too small or big.
-                    # But for "contact", they should be close.
-                    
-                    valid_mask = dists < TOLERANCE
-                    valid_indices = np.where(valid_mask)[0]
-                    
-                    for idx in valid_indices:
-                        selected_faces.append(new_boundary_faces[idx])
-
-                elif d["strategy"] == "GeometricRule":
-                    rule = d.get("rule", "")
-                    
-                    # Generic Relative Tolerance
-                    diag = np.linalg.norm(new_bbox[1] - new_bbox[0])
-                    TOL = diag * 0.02 # 2% tolerance
-                    
-                    min_z = new_bbox[0][2]
-                    
-                    if rule == "bbox_bottom":
-                        # Faces close to min Z
-                        # Check Z coordinate of centroids
-                        z_coords = new_face_centroids[:, 2]
-                        valid_mask = z_coords < (min_z + TOL)
-                        valid_indices = np.where(valid_mask)[0]
-                        for idx in valid_indices:
-                            selected_faces.append(new_boundary_faces[idx])
-                            
-                    elif rule == "all_except_bottom":
-                        # All faces EXCEPT those close to min Z
-                        z_coords = new_face_centroids[:, 2]
-                        valid_mask = z_coords >= (min_z + TOL)
-                        valid_indices = np.where(valid_mask)[0]
-                        for idx in valid_indices:
-                            selected_faces.append(new_boundary_faces[idx])
-                    
-                    elif rule == "all":
-                        # All boundary faces
-                        selected_faces = new_boundary_faces
-
-                    elif rule == "z_down_except_bottom":
-                         # Faces with Normal pointing Down (Z < -0.9) AND Centroid Z > min_z + TOL
-                         # 1. First, select candidates not at bottom
-                         # Refined Tolerance: 0.1% of diagonal or 1e-3?
-                         TOL_EXCL = diag * 0.001 
-                         z_coords = new_face_centroids[:, 2]
-                         not_bottom_mask = z_coords >= (min_z + TOL_EXCL)
-                         candidate_indices = np.where(not_bottom_mask)[0]
-                         
-                         print(f"[DEBUG] z_down_except_bottom: {len(candidate_indices)} candidates above Z={min_z + TOL_EXCL:.4f}")
-                         
-                         found_count = 0
-                         for idx in candidate_indices:
-                             face_nodes_idx = new_boundary_faces[idx]
-                             f_coords = new_nodes[list(face_nodes_idx)]
-                             
-                             # Calculate Normal
-                             v1 = f_coords[1] - f_coords[0]
-                             v2 = f_coords[3] - f_coords[0]
-                             n = np.cross(v1, v2)
-                             norm = np.linalg.norm(n)
-                             if norm > 0:
-                                 n = n / norm
-                                 
-                             # Check if pointing down
-                             # User requested strict "Anything pointing down" (n[2] < 0)
-                             if n[2] < -1e-3: 
-                                 selected_faces.append(new_boundary_faces[idx])
-                                 found_count += 1
-                         
-                         print(f"[DEBUG] z_down_except_bottom: Selected {found_count} faces.")
-                         
-                    elif rule == "z_up":
-                        # Faces with Normal pointing UP (Z > 0)
-                        found_count = 0
-                        for idx in range(len(new_boundary_faces)):
-                            face_nodes_idx = new_boundary_faces[idx]
-                            f_coords = new_nodes[list(face_nodes_idx)]
-                            
-                            v1 = f_coords[1] - f_coords[0]
-                            v2 = f_coords[3] - f_coords[0]
-                            n = np.cross(v1, v2)
-                            norm = np.linalg.norm(n)
-                            if norm > 0:
-                                n = n / norm
-                                
-                            # User requested "Anything pointing up"
-                            if n[2] > 1e-3:
-                                selected_faces.append(new_boundary_faces[idx])
-                                found_count += 1
-                        print(f"[DEBUG] z_up: Selected {found_count} faces.")
-
-                results["Surface"][name] = selected_faces
-
+                    results["Surface"][name] = selected_faces
+                else:
+                    print(f"[WARN] Unknown strategy '{strategy_key}' for surface '{name}'")
+        
         return results

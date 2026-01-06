@@ -166,115 +166,57 @@ class MainWindow(QMainWindow):
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
         
-        # Helper to load icon (custom .ico or Qt standard fallback)
-        # Helper to load icon (custom .ico/.svg or Qt standard fallback)
-        def load_icon(name, fallback_standard):
-            if getattr(sys, "frozen", False):
-                # Frozen: Resources are copied to 'src/icons' next to the executable
-                # build.py copies 'src/icons' to dist/VEXIS-CAE/src/icons
-                icon_dir = os.path.join(os.path.dirname(sys.executable), "src", "icons")
-            else:
-                # Dev: src/gui/main_window.py -> src/ -> src/icons
-                icon_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
-            
-            # Priority 1: SVG (Vector) - Dynamic Recoloring
-            svg_path = os.path.join(icon_dir, f"{name}.svg")
-            if os.path.exists(svg_path):
-                try:
-                    with open(svg_path, "r", encoding="utf-8") as f:
-                        svg_content = f.read()
-                    
-                    def create_pixmap_variant(content, color):
-                        recolored = content.replace('"#000000"', f'"{color}"') \
-                                           .replace('"black"', f'"{color}"') \
-                                           .replace("'#000000'", f"'{color}'") \
-                                           .replace("'black'", f"'{color}'")
-                        data = bytearray(recolored, encoding='utf-8')
-                        pm = QPixmap()
-                        pm.loadFromData(data, "SVG")
-                        return pm
-
-                    # Normal State: Theme White
-                    normal_pixmap = create_pixmap_variant(svg_content, "#EAF2FF")
-                    
-                    # Disabled State: Darker Gray (for low contrast against dark BG)
-                    disabled_pixmap = create_pixmap_variant(svg_content, "#353D4A")
-
-                    if not normal_pixmap.isNull():
-                        icon = QIcon()
-                        icon.addPixmap(normal_pixmap, QIcon.Normal)
-                        icon.addPixmap(disabled_pixmap, QIcon.Disabled)
-                        return icon
-                except Exception as e:
-                    print(f"SVG load error for {name}: {e}")
-
-            # Priority 2: ICO (Legacy)
-            ico_path = os.path.join(icon_dir, f"{name}.ico")
-            if os.path.exists(ico_path):
-                return QIcon(ico_path)
-            
-            return self.style().standardIcon(fallback_standard)
-        
+        # Import shared icon loader with caching
+        from src.gui.utils import load_icon
         from PySide6.QtWidgets import QStyle
         
-        self.run_action = QAction(load_icon("start", QStyle.SP_MediaPlay), "Start Batch", self)
-        self.run_action.triggered.connect(self.on_start_clicked)
-        toolbar.addAction(self.run_action)
+        # Define toolbar actions with (icon_name, fallback, label, handler, enabled)
+        actions = [
+            ("start", QStyle.SP_MediaPlay, "Start Batch", self.on_start_clicked, True),
+            ("pause", QStyle.SP_MediaStop, "Stop", self.on_stop_clicked, False),
+            ("skip", QStyle.SP_MediaSkipForward, "Skip", self.on_skip_clicked, False),
+            None,  # Separator
+            ("refresh-circle", QStyle.SP_BrowserReload, "Refresh", self.on_refresh_clicked, True),
+            None,
+            ("settings", QStyle.SP_FileDialogDetailedView, "Config", self.on_edit_config_clicked, True),
+            ("material", QStyle.SP_FileDialogInfoView, "Material", self.on_edit_material_clicked, True),
+            None,
+            ("about", QStyle.SP_MessageBoxInformation, "About", self.on_about_clicked, True),
+            ("shutdown", QStyle.SP_DialogCloseButton, "Exit", self.on_exit_clicked, True),
+            None,
+            None,  # Double separator for spacing
+        ]
         
-        # Note: using 'pause' SVG for Stop action if 'stop.svg' is missing, or fallback to standard
-        self.stop_action = QAction(load_icon("pause", QStyle.SP_MediaStop), "Stop", self)
-        self.stop_action.setEnabled(False)
-        self.stop_action.triggered.connect(self.on_stop_clicked)
-        toolbar.addAction(self.stop_action)
-        
-        self.skip_action = QAction(load_icon("skip", QStyle.SP_MediaSkipForward), "Skip", self)
-        self.skip_action.setEnabled(False)
-        self.skip_action.triggered.connect(self.on_skip_clicked)
-        toolbar.addAction(self.skip_action)
-        
-        toolbar.addSeparator()
-        
-        self.refresh_action = QAction(load_icon("refresh-circle", QStyle.SP_BrowserReload), "Refresh", self)
-        self.refresh_action.triggered.connect(self.on_refresh_clicked)
-        toolbar.addAction(self.refresh_action)
-        
-        toolbar.addSeparator()
-        
-        # Config file buttons
-        self.edit_config_action = QAction(load_icon("settings", QStyle.SP_FileDialogDetailedView), "Config", self)
-        self.edit_config_action.setToolTip("Edit analysis/mesh config (config.yaml)")
-        self.edit_config_action.triggered.connect(self.on_edit_config_clicked)
-        toolbar.addAction(self.edit_config_action)
-        
-        self.edit_material_action = QAction(load_icon("material", QStyle.SP_FileDialogInfoView), "Material", self)
-        self.edit_material_action.setToolTip("Edit material properties (material.yaml)")
-        self.edit_material_action.triggered.connect(self.on_edit_material_clicked)
-        toolbar.addAction(self.edit_material_action)
-        
-        
-        toolbar.addSeparator()
-        
-        self.about_action = QAction(load_icon("about", QStyle.SP_MessageBoxInformation), "About", self)
-        self.about_action.triggered.connect(self.on_about_clicked)
-        toolbar.addAction(self.about_action)
-
-        self.exit_action = QAction(load_icon("shutdown", QStyle.SP_DialogCloseButton), "Exit", self)
-        self.exit_action.triggered.connect(self.on_exit_clicked)
-        toolbar.addAction(self.exit_action)
-        
-        # Spacer for visual separation before sleep toggle
-        toolbar.addSeparator()
-        toolbar.addSeparator()  # Double separator for extra spacing
+        # Create actions from definition
+        self.run_action = self.stop_action = self.skip_action = None
+        for item in actions:
+            if item is None:
+                toolbar.addSeparator()
+            else:
+                icon_name, fallback, label, handler, enabled = item
+                action = QAction(load_icon(icon_name, fallback, self.style()), label, self)
+                action.setEnabled(enabled)
+                action.triggered.connect(handler)
+                toolbar.addAction(action)
+                
+                # Store references for dynamic enable/disable
+                if label == "Start Batch":
+                    self.run_action = action
+                elif label == "Stop":
+                    self.stop_action = action
+                elif label == "Skip":
+                    self.skip_action = action
         
         # Sleep Prevention Toggle (Icon-based)
         self._sleep_enabled = False
-        self._sleep_icon_on = load_icon("eye-solid", QStyle.SP_DialogApplyButton)
-        self._sleep_icon_off = load_icon("eye-closed", QStyle.SP_DialogCancelButton)
+        self._sleep_icon_on = load_icon("eye-solid", QStyle.SP_DialogApplyButton, self.style())
+        self._sleep_icon_off = load_icon("eye-closed", QStyle.SP_DialogCancelButton, self.style())
         
         self.sleep_action = QAction(self._sleep_icon_off, "Keep Awake", self)
         self.sleep_action.setToolTip("Anti-sleep ON/OFF")
         self.sleep_action.triggered.connect(self._on_sleep_toggle_clicked)
         toolbar.addAction(self.sleep_action)
+
 
     def _connect_signals(self):
         self.file_watcher.file_added.connect(self.job_manager.add_job_from_path)
