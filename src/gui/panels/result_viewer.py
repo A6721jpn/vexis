@@ -403,6 +403,11 @@ class ResultViewer(QWidget):
             
             # Add mesh
             if scalar and (scalar in display_mesh.point_data or scalar in display_mesh.cell_data):
+                # Convert Cell Data to Point Data for smooth gradient display
+                # (Stress/Strain are computed at element level, need averaging at nodes)
+                if scalar in display_mesh.cell_data and scalar not in display_mesh.point_data:
+                    display_mesh = display_mesh.cell_data_to_point_data()
+                
                 self.plotter.add_mesh(
                     display_mesh, 
                     scalars=scalar, 
