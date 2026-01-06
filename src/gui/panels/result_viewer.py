@@ -3,11 +3,15 @@ import yaml
 import pyvista as pv
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
                                QLabel, QSlider, QComboBox, QFrame, QTabWidget,
-                               QScrollArea, QSizePolicy)
+                               QSizePolicy)
 from PySide6.QtCore import Qt, Signal, QThread
-from PySide6.QtGui import QPixmap
 from pyvistaqt import QtInteractor
 import numpy as np
+import pandas as pd
+
+# Matplotlib Qt backend for embedded graphs
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
 
 from src.utils.xplt_loader import WaffleironLoader
 
@@ -131,25 +135,35 @@ class ResultViewer(QWidget):
         self.plotter_frame = QFrame()
         self.plotter_layout = QVBoxLayout(self.plotter_frame)
         self.plotter_layout.setContentsMargins(0, 0, 0, 0)
+        self.plotter_layout.setSpacing(0)
         
         self.plotter = QtInteractor(self.plotter_frame)
         self._apply_plotter_theme()
         self.plotter_layout.addWidget(self.plotter)
         
+        # Loading overlay (centered in plotter_frame)
+        self.loading_overlay = QLabel(self.plotter_frame)
+        self.loading_overlay.setAlignment(Qt.AlignCenter)
+        self.loading_overlay.setStyleSheet(
+            "background-color: rgba(0,0,0,200); color: white; font-size: 18px; "
+            "font-weight: bold; padding: 30px; border-radius: 10px;"
+        )
+        self.loading_overlay.hide()
+        
         self.tab_widget.addTab(self.plotter_frame, "3D Contour")
         
-        # --- Tab 2: Graph ---
-        self.graph_scroll = QScrollArea()
-        self.graph_scroll.setWidgetResizable(True)
-        self.graph_scroll.setAlignment(Qt.AlignCenter)
+        # --- Tab 2: Graph (Matplotlib Canvas) ---
+        self.graph_frame = QFrame()
+        self.graph_layout = QVBoxLayout(self.graph_frame)
+        self.graph_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.graph_label = QLabel("No graph available")
-        self.graph_label.setAlignment(Qt.AlignCenter)
-        self.graph_label.setStyleSheet("background-color: #1a1a2e;")
-        self.graph_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.graph_scroll.setWidget(self.graph_label)
+        # Create matplotlib figure and canvas
+        self.graph_figure = Figure(facecolor='#0B0F14')
+        self.graph_canvas = FigureCanvasQTAgg(self.graph_figure)
+        self.graph_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.graph_layout.addWidget(self.graph_canvas)
         
-        self.tab_widget.addTab(self.graph_scroll, "Load-Displacement Graph")
+        self.tab_widget.addTab(self.graph_frame, "Load-Displacement Graph")
         
         layout.addWidget(self.tab_widget)
 
@@ -172,13 +186,7 @@ class ResultViewer(QWidget):
 
         layout.addLayout(time_layout)
 
-        # Loading Overlay
-        self.loading_overlay = QLabel("Loading...", self.plotter)
-        self.loading_overlay.setAlignment(Qt.AlignCenter)
-        self.loading_overlay.setStyleSheet(
-            "background-color: rgba(0,0,0,180); color: white; font-size: 16px; padding: 20px;"
-        )
-        self.loading_overlay.hide()
+
 
     def _apply_plotter_theme(self):
         """Apply theme colors to PyVista plotter."""
@@ -190,8 +198,19 @@ class ResultViewer(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if hasattr(self, 'loading_overlay'):
-            self.loading_overlay.resize(self.plotter.size())
+        self._update_overlay_geometry()
+    
+    def _update_overlay_geometry(self):
+        """Update loading overlay position and size."""
+        if hasattr(self, 'loading_overlay') and self.loading_overlay.isVisible():
+            # Center the overlay on the plotter_frame
+            overlay_width = 250
+            overlay_height = 80
+            frame_rect = self.plotter_frame.rect()
+            x = (frame_rect.width() - overlay_width) // 2
+            y = (frame_rect.height() - overlay_height) // 2
+            self.loading_overlay.setGeometry(x, y, overlay_width, overlay_height)
+            self.loading_overlay.raise_()
 
     def load_result(self, job_name, result_dir, temp_dir):
         """Load result for a job."""
@@ -211,8 +230,8 @@ class ResultViewer(QWidget):
         self.time_label.setText("Time: 0.00")
         self.step_label.setText("Step: 0/0")
         
-        # Load graph PNG
-        self._load_graph_png(job_name)
+        # Load graph from CSV
+        self._update_graph(job_name)
         
         # Find xplt file
         base = job_name
@@ -234,33 +253,85 @@ class ResultViewer(QWidget):
             return
 
         # Start loading thread
-        self.loading_overlay.setText("Loading Result...")
-        self.loading_overlay.show()
+        self._show_loading_overlay("Loading Result...")
         
         self._stop_loading_thread()
 
         self.load_thread = XpltLoaderThread(xplt_path)
         self.load_thread.finished.connect(self._on_load_finished)
         self.load_thread.start()
+    
+    def _show_loading_overlay(self, text):
+        """Show loading overlay with specified text."""
+        self.loading_overlay.setText(text)
+        self.loading_overlay.adjustSize()
+        self.loading_overlay.show()
+        self._update_overlay_geometry()
+    
+    def _hide_loading_overlay(self):
+        """Hide loading overlay."""
+        self.loading_overlay.hide()
 
-    def _load_graph_png(self, job_name):
-        """Load graph PNG for the job."""
-        graph_paths = [
-            os.path.join(self.result_dir or "", f"{job_name}_graph.png"),
-            os.path.join(os.getcwd(), "results", f"{job_name}_graph.png"),
+    def _update_graph(self, job_name):
+        """Load CSV data and plot graph directly in the canvas."""
+        csv_paths = [
+            os.path.join(self.result_dir or "", f"{job_name}_result.csv"),
+            os.path.join(os.getcwd(), "results", f"{job_name}_result.csv"),
         ]
         
-        for graph_path in graph_paths:
-            if graph_path and os.path.exists(graph_path):
-                pixmap = QPixmap(graph_path)
-                if not pixmap.isNull():
-                    # Scale to fit while maintaining aspect ratio
-                    scaled = pixmap.scaled(800, 600, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                    self.graph_label.setPixmap(scaled)
-                    return
+        for csv_path in csv_paths:
+            if csv_path and os.path.exists(csv_path):
+                try:
+                    df = pd.read_csv(csv_path)
+                    if 'Stroke' in df.columns and 'Reaction_Force' in df.columns:
+                        self._plot_graph(df, job_name)
+                        return
+                except Exception as e:
+                    print(f"Error loading CSV: {e}")
         
-        self.graph_label.setText("No graph available\n(Graph will be generated after analysis)")
-        self.graph_label.setPixmap(QPixmap())
+        # Show no data message
+        self._show_no_graph_message()
+    
+    def _plot_graph(self, df, title):
+        """Plot Force-Stroke graph on the embedded canvas."""
+        self.graph_figure.clear()
+        ax = self.graph_figure.add_subplot(111)
+        
+        # Dark theme colors
+        ax.set_facecolor('#0B0F14')
+        ax.tick_params(colors='#6F8098')
+        ax.spines['bottom'].set_color('#243244')
+        ax.spines['top'].set_color('#243244')
+        ax.spines['left'].set_color('#243244')
+        ax.spines['right'].set_color('#243244')
+        ax.xaxis.label.set_color('#EAF2FF')
+        ax.yaxis.label.set_color('#EAF2FF')
+        ax.title.set_color('#EAF2FF')
+        
+        # Plot data
+        ax.plot(df['Stroke'], df['Reaction_Force'], 
+                marker='o', color='#2EE7FF', markeredgecolor='white', 
+                markersize=4, linewidth=2, label='KEYCAP Reaction')
+        
+        ax.set_title(title, fontsize=12, fontweight='bold')
+        ax.set_xlabel('Stroke (mm)', fontsize=10)
+        ax.set_ylabel('Reaction Force (N)', fontsize=10)
+        ax.grid(True, linestyle='--', alpha=0.5, color='#243244')
+        ax.legend(facecolor='#141E2A', edgecolor='#243244', labelcolor='#EAF2FF')
+        
+        self.graph_figure.tight_layout()
+        self.graph_canvas.draw()
+    
+    def _show_no_graph_message(self):
+        """Display 'no graph' message on the canvas."""
+        self.graph_figure.clear()
+        ax = self.graph_figure.add_subplot(111)
+        ax.set_facecolor('#0B0F14')
+        ax.text(0.5, 0.5, 'No graph available\n(Graph will be generated after analysis)',
+                ha='center', va='center', fontsize=12, color='#6F8098',
+                transform=ax.transAxes)
+        ax.axis('off')
+        self.graph_canvas.draw()
 
     def _stop_loading_thread(self):
         if self.load_thread and self.load_thread.isRunning():
@@ -270,7 +341,7 @@ class ResultViewer(QWidget):
         return False
 
     def _on_load_finished(self, loader, error_msg):
-        self.loading_overlay.hide()
+        self._hide_loading_overlay()
         if error_msg:
             self.plotter.add_text(f"Error: {error_msg}", position='upper_left', color='red')
             return

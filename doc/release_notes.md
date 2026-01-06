@@ -4,7 +4,25 @@
 
 ---
 
-## Version 1.2.1 (コンター表示の滑らか化) - Current
+## Version 1.3.0 (リファクタリングとUI改善) - Current
+**開発日**: 2026-01-06
+コードベースの整理と結果表示機能の大幅な改善を行ったバージョンです。
+
+- **リファクタリング:**
+    - **共通ジオメトリユーティリティの統合**: バウンディングボックス計算、境界面抽出、KDTreeクエリなどを `src/utils/geometry.py` に一元化。
+    - **SetReconstructor の戦略パターン化**: 複雑な if-else ロジックを `ReconstructionStrategy` 抽象クラスと具象実装 (`RelativeBoundsStrategy`, `ProximityStrategy`, `GeometricRuleStrategy`) に分離。
+    - **GUIユーティリティの分離**: `load_icon` 関数を `src/gui/utils.py` に抽出し、SVGカラー置換とキャッシュ機能を共通化。
+
+- **バグ修正:**
+    - **接触面再構築エラー**: Hex20要素の境界面抽出で発生していた `ambiguous truth value` エラーを修正。これによりサーフェスが orphaned として削除される問題を解決。
+
+- **UI改善:**
+    - **グラフの動的リサイズ対応**: Force-Stroke グラフを PNG 画像表示から Matplotlib の `FigureCanvasQTAgg` 埋め込みに変更。ウィンドウサイズに自動追従。
+    - **Loading Overlay の修正**: EXE 環境でローディング表示が正しく中央配置されない問題を修正。
+
+---
+
+## Version 1.2.1 (コンター表示の滑らか化)
 **開発日**: 2026-01-06
 応力・ひずみコンター図の表示品質を向上させたマイナーアップデートです。
 

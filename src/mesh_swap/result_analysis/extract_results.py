@@ -4,16 +4,25 @@ import matplotlib.pyplot as plt
 import sys, re
 from pathlib import Path
 
-def process_log(log_path, output_dir):
-    with open(log_path, 'r') as f:
-        content = f.read()
 
-    # Parse the rigid body data file format
-    # *Step  = 0
-    # *Time  = 0
-    # *Data  = KEYCAP
-    # 3 3 0
+def parse_rigid_body_data(log_path):
+    """
+    Parse rigid body data file and return DataFrame for plotting.
     
+    Args:
+        log_path: Path to the rigid body data file.
+        
+    Returns:
+        DataFrame with columns ['Time', 'Stroke', 'Reaction_Force', 'Disp_Z', 'Force_Z']
+        or None if parsing fails.
+    """
+    try:
+        with open(log_path, 'r') as f:
+            content = f.read()
+    except Exception as e:
+        print(f"Error reading {log_path}: {e}")
+        return None
+
     data_rows = []
     current_time = None
     
@@ -34,7 +43,6 @@ def process_log(log_path, output_dir):
                 data_line = lines[i+1].strip()
                 parts = data_line.split()
                 if len(parts) >= 3 and current_time is not None:
-                     # ID, Val1, Val2
                      try:
                          rb_id = int(parts[0])
                          v1 = float(parts[1])
@@ -46,7 +54,7 @@ def process_log(log_path, output_dir):
 
     if not data_rows:
         print(f"No data parsed from {log_path}.")
-        return
+        return None
 
     df = pd.DataFrame(data_rows, columns=['Time', 'RB_ID', 'Disp_Z', 'Force_Z'])
     
@@ -57,6 +65,15 @@ def process_log(log_path, output_dir):
     
     # Reaction Force = -1 * Force_Z (Assuming Force_Z is reaction in -Z direction)
     df['Reaction_Force'] = -1.0 * df['Force_Z']
+    
+    return df
+
+
+def process_log(log_path, output_dir):
+    """Process rigid body data and generate CSV + PNG outputs."""
+    df = parse_rigid_body_data(log_path)
+    if df is None:
+        return
 
     # Save CSV
     out_dir = Path(output_dir)
@@ -65,8 +82,7 @@ def process_log(log_path, output_dir):
     df[['Time', 'Stroke', 'Reaction_Force', 'Disp_Z', 'Force_Z']].to_csv(csv_path, index=False)
     print(f"Saved CSV: {csv_path}")
 
-    # Plot
-    # Plot - Dark Theme
+    # Plot - Dark Theme (PNG still generated for backward compatibility)
     plt.style.use('dark_background')
     plt.rcParams.update({
         "figure.facecolor": "#0B0F14",
@@ -80,7 +96,7 @@ def process_log(log_path, output_dir):
         "figure.autolayout": True
     })
 
-    plt.figure(figsize=(10, 6)) # Wider layout
+    plt.figure(figsize=(10, 6))
     plt.plot(df['Stroke'], df['Reaction_Force'], marker='o', 
              color='#2EE7FF', markeredgecolor='white', markersize=4,
              linewidth=2, label='KEYCAP Reaction')
@@ -95,6 +111,7 @@ def process_log(log_path, output_dir):
     
     png_path = out_dir / "force_displacement.png"
     plt.savefig(png_path, dpi=100, bbox_inches='tight')
+    plt.close()
     print(f"Saved Graph: {png_path}")
 
 if __name__ == "__main__":
