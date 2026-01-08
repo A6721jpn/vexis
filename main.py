@@ -70,6 +70,7 @@ def main():
                 material_yaml = MATERIAL_CONFIG
                 mesh_config_path = CONFIG_FILE
                 push_dist, sim_steps, mat_name, num_threads = None, 20, None, None
+                contact_penalty = 5.0 
                 template_feb = DEFAULT_TEMPLATE
                 febio_path = None # Will use helper default if not in config
 
@@ -82,6 +83,7 @@ def main():
                         sim_steps = conf.get("time_steps", sim_steps)
                         mat_name = conf.get("material_name")
                         num_threads = conf.get("num_threads")
+                        contact_penalty = conf.get("contact_penalty", 5.0)
                         template_feb = conf.get("template_feb", template_feb)
                         febio_path = conf.get("febio_path")
 
@@ -101,7 +103,7 @@ def main():
 
                 # 2. FEBio Prep
                 feb_path = os.path.join(TEMP_DIR, f"{name_no_ext}.feb")
-                helpers.run_integration(vtk_path, template_feb, feb_path, push_dist, sim_steps, mat_name, material_yaml)
+                helpers.run_integration(vtk_path, template_feb, feb_path, push_dist, sim_steps, mat_name, material_yaml, contact_penalty=contact_penalty)
                 update_status(m="x" if not args.skip_mesh else "s", p="x")
 
                 # 3. Solver & Extraction

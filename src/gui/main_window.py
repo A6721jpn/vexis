@@ -217,6 +217,11 @@ class MainWindow(QMainWindow):
         self.sleep_action.triggered.connect(self._on_sleep_toggle_clicked)
         toolbar.addAction(self.sleep_action)
 
+        # Mesh Generation Button (Positioned after Anti-Sleep)
+        self.gen_mesh_action = QAction(load_icon("meshgen", QStyle.SP_FileDialogListView, self.style()), "Gen Mesh", self)
+        self.gen_mesh_action.triggered.connect(self.on_gen_mesh_clicked)
+        toolbar.addAction(self.gen_mesh_action)
+
 
     def _connect_signals(self):
         self.file_watcher.file_added.connect(self.job_manager.add_job_from_path)
@@ -227,6 +232,7 @@ class MainWindow(QMainWindow):
         self.job_manager.status_changed.connect(self._on_job_status_changed)
         self.job_manager.progress_changed.connect(self._on_job_progress_changed)
         self.job_manager.log_added.connect(self._on_job_log_added)
+        self.job_manager.batch_finished.connect(self.on_stop_clicked)
 
     def _init_existing_jobs(self):
         for path in self.file_watcher.get_existing_files():
@@ -342,6 +348,12 @@ class MainWindow(QMainWindow):
             self.preview_stack.setCurrentWidget(self.mesh_panel)
             self.mesh_panel.load_step(job.step_path)
             return
+
+        # Priority 1.5: MESH GENERATED jobs show generated VTK preview
+        if job.status == JobStatus.MESH_GENERATED:
+            self.preview_stack.setCurrentWidget(self.mesh_panel)
+            self.mesh_panel.load_mesh(job.vtk_path)
+            return
             
         # Priority 2: RUNNING jobs show progress/log panel
         if job.status == JobStatus.RUNNING:
@@ -390,13 +402,33 @@ class MainWindow(QMainWindow):
             return
 
         self.run_action.setEnabled(False)
+        self.gen_mesh_action.setEnabled(False)
         self.stop_action.setEnabled(True)
         self.skip_action.setEnabled(True)
         self.job_manager.start_batch()
 
+    def on_gen_mesh_clicked(self):
+        # Validate filenames (ASCII check)
+        invalid_jobs = self.job_manager.get_invalid_jobs()
+        if invalid_jobs:
+            names = "\n".join([f"・ {j.name}" for j in invalid_jobs])
+            QMessageBox.warning(
+                self, 
+                "不正なファイル名", 
+                f"以下のファイル名に日本語等の全角文字が含まれています：\n\n{names}\n\n"
+                "解析を確実に実行するため、ファイル名を半角英数字（例: case_0）に変更してください。"
+            )
+            return
+
+        self.run_action.setEnabled(False)
+        self.gen_mesh_action.setEnabled(False)
+        self.stop_action.setEnabled(True)
+        self.skip_action.setEnabled(True)
+        self.job_manager.start_batch(mesh_only=True)
 
     def on_stop_clicked(self):
         self.run_action.setEnabled(True)
+        self.gen_mesh_action.setEnabled(True)
         self.stop_action.setEnabled(False)
         self.skip_action.setEnabled(False)
         self.job_manager.stop_batch()

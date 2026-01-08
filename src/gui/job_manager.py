@@ -13,12 +13,13 @@ class AnalysisWorker(QThread):
     log_updated = Signal(str, str)           # job_id, log_line
     finished = Signal(str, bool, str)             # job_id, success, error_message
 
-    def __init__(self, job: JobItem, config_path: str, temp_dir: str, result_dir: str):
+    def __init__(self, job: JobItem, config_path: str, temp_dir: str, result_dir: str, mesh_only: bool = False):
         super().__init__()
         self.job = job
         self.config_path = config_path
         self.temp_dir = temp_dir
         self.result_dir = result_dir
+        self.mesh_only = mesh_only
         self._is_running = True
         self._stopped = False
         self._skipped = False
@@ -99,6 +100,11 @@ class AnalysisWorker(QThread):
                 else: self.finished.emit(job_id, False, "Stopped by user")
                 return
 
+            if self.mesh_only:
+                self.progress_updated.emit(job_id, 100, "Mesh Generated")
+                self.finished.emit(job_id, True, "Mesh Generation Complete")
+                return
+
             # --- 2. Integration ---
             self.progress_updated.emit(job_id, 10, "Preparing FEBio model...")
             out_feb = os.path.join(self.temp_dir, f"{base_name}.feb")
@@ -172,6 +178,7 @@ class JobManager(QObject):
     status_changed = Signal(str, JobStatus)
     progress_changed = Signal(str, int, str) # job_id, progress, status_text
     log_added = Signal(str, str)             # job_id, log_line
+    batch_finished = Signal()                # Emitted when all jobs in batch are done
 
     def __init__(self, input_dir, temp_dir, result_dir, config_path):
         super().__init__()
@@ -182,6 +189,7 @@ class JobManager(QObject):
         self.jobs = {} 
         self.worker = None
         self._batch_running = False
+        self._batch_mesh_only = False
 
     def get_invalid_jobs(self):
         """非ASCII文字を含むジョブのリストを返す"""
@@ -267,10 +275,10 @@ class JobManager(QObject):
             del self.jobs[target_id]
             self.job_removed.emit(target_id)
 
-    def start_batch(self):
+    def start_batch(self, mesh_only=False):
         # Reset COMPLETED jobs to PENDING and clean up their files
         for job in self.jobs.values():
-            if job.status == JobStatus.COMPLETED:
+            if job.status == JobStatus.COMPLETED or job.status == JobStatus.MESH_GENERATED:
                 self.cleanup_job_files(job.name)
                 job.status = JobStatus.PENDING
                 job.progress = 0
@@ -278,6 +286,7 @@ class JobManager(QObject):
                 self.status_changed.emit(job.id, JobStatus.PENDING)
 
         self._batch_running = True
+        self._batch_mesh_only = mesh_only
         self.start_next_job()
 
     def start_next_job(self):
@@ -302,7 +311,7 @@ class JobManager(QObject):
                 break
         
         if next_job:
-            self.worker = AnalysisWorker(next_job, self.config_path, self.temp_dir, self.result_dir)
+            self.worker = AnalysisWorker(next_job, self.config_path, self.temp_dir, self.result_dir, mesh_only=self._batch_mesh_only)
             self.worker.progress_updated.connect(self._on_worker_progress)
             self.worker.log_updated.connect(self._on_worker_log)
             # Custom signal for status updates
@@ -330,6 +339,7 @@ class JobManager(QObject):
             self.worker.start()
         else:
             self._batch_running = False
+            self.batch_finished.emit()
 
     def stop_batch(self):
         self._batch_running = False
@@ -365,7 +375,10 @@ class JobManager(QObject):
                 job.status_text = "Stopped"
                 job.error_message = "Force stopped by user"
             elif success:
-                job.status = JobStatus.COMPLETED
+                if hasattr(self.worker, 'mesh_only') and self.worker.mesh_only:
+                    job.status = JobStatus.MESH_GENERATED
+                else:
+                    job.status = JobStatus.COMPLETED
             else:
                 job.status = JobStatus.ERROR
                 job.error_message = error_message
