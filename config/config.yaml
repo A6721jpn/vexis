@@ -1,5 +1,5 @@
 # =============================================================
-# VEXIS-CAE v1.3.1 Simulation Configuration
+# VEXIS-CAE v1.3.1-preview Simulation Configuration
 # =============================================================
 
 mesh:
@@ -7,7 +7,7 @@ mesh:
   revolve_axis: 2          # 0=X, 1=Y, 2=Z (Default: 2)
   revolve_angle: 90        # Degrees, normally 90 for quarter symmetry
   revolve_layers: 14       # Number of elements in circumferential direction
-  mesh_size: 0.3           # Global mesh size target (mm)
+  mesh_size: 0.32           # Global mesh size target (mm) - Paper experiment
   mesh_dimension: 2        # Element Order: 1=Linear(Hex8), 2=Quadratic(Hex20)
   output_format: "inp"     # Output format for intermediate mesh
   

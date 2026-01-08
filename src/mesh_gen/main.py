@@ -50,19 +50,43 @@ def generate_adaptive_mesh(config_path: str, stp_path: str, output_path: str | N
     # Ensure consistent element orientation (prevents local inversions after revolve)
     fix_inverted_hexes_inplace(mesh_ring_3d, label="ring_3d")
 
-    # 3) Extract axial distribution on the interface line (R=R_core) from the 2D ring mesh.
+    # 3) Extract axial distribution from ring_3d at interface (R ≈ R_core)
+    #    IMPORTANT: After revolve, ring_3d has 3D coords: (X, Y, Z) where Y is axial
+    #    We extract unique Y values at R ≈ R_core to use as a_interface
     tol = max(1e-6, cfg.mesh_size * 0.05)
-    mask = np.abs(ring_RA[:, 0] - split.R_core) < tol
-    iface_ids = np.where(mask)[0]
-    if len(iface_ids) < 2:
+    ring_pts_3d = mesh_ring_3d.points
+    r_ring_3d = np.hypot(ring_pts_3d[:, 0], ring_pts_3d[:, 2])  # R = sqrt(X^2 + Z^2)
+    mask_boundary = np.abs(r_ring_3d - split.R_core) < tol
+    
+    if np.count_nonzero(mask_boundary) < 2:
         raise RuntimeError(
-            "Failed to locate interface nodes at R=R_core in ring mesh. "
-            f"(found {len(iface_ids)} nodes, tol={tol})"
+            "Failed to locate interface nodes at R=R_core in ring_3d mesh. "
+            f"(found {np.count_nonzero(mask_boundary)} nodes, tol={tol})"
         )
+    
+    # Get unique Y values (axial) at the boundary
+    y_boundary = ring_pts_3d[mask_boundary, 1]
+    # Round to avoid float precision issues and get unique values
+    # VEXIS FIX: Relaxed tolerance to 4 decimals (0.1um) to merge close layers (prevents ghost layers)
+    y_unique = np.unique(np.round(y_boundary, decimals=4))
+    a_interface = np.sort(y_unique)  # sorted axial coordinates
+    
+    # VEXIS FIX: Filter out layers that are too close (ghost layers)
+    if len(a_interface) > 1:
+        min_dist = max(1e-6, cfg.mesh_size * 0.05) # 5% of mesh size tolerance
+        keep_mask = np.ones(len(a_interface), dtype=bool)
+        last_val = a_interface[0]
+        for i in range(1, len(a_interface)):
+            if (a_interface[i] - last_val) < min_dist:
+                keep_mask[i] = False # Drop this layer (too close to previous)
+            else:
+                last_val = a_interface[i]
+        
+        n_dropped = len(a_interface) - np.count_nonzero(keep_mask)
+        if n_dropped > 0:
+            print(f"Refined a_interface: dropped {n_dropped} ghost layers (min_dist={min_dist:.6f})")
+            a_interface = a_interface[keep_mask]
 
-    # Sort by axial coordinate (A)
-    iface_ids = iface_ids[np.argsort(ring_RA[iface_ids, 1])]
-    a_interface = ring_RA[iface_ids, 1]
     print(f"Interface axial nodes: {len(a_interface)}")
 
     # 4) Generate structured core O-grid in the wedge and extrude with profile-based A-mapping.
@@ -80,9 +104,10 @@ def generate_adaptive_mesh(config_path: str, stp_path: str, output_path: str | N
     H_ref = A_top_core - A_bot_core
     
     # Default winding (CCW in XZ) produces Normal = -Y.
-    # If H_ref > 0 (Extrusion +Y), we need Normal +Y to get Positive Volume. -> Flip.
-    # If H_ref < 0 (Extrusion -Y), we need Normal -Y to get Positive Volume. -> Keep.
-    flip_winding = (H_ref > 0)
+    # If H_ref > 0 (Extrusion +Y), we need Normal +Y to get Positive Volume.
+    # Logic adjustment: It seems our previous assumption was reversed, or creating CW winding works better.
+    # Let's try inverting the logic.
+    flip_winding = not (H_ref > 0)
     
     print(f"DEBUG: Core Height H_ref={H_ref:.6f}. Flip winding? {flip_winding}")
 

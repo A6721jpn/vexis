@@ -213,6 +213,7 @@ def extrude_core_to_3d(
     R_core: float,
     a_bot: Callable[[np.ndarray], np.ndarray],
     a_top: Callable[[np.ndarray], np.ndarray],
+    revolve_angle_deg: float = 90.0,
 ) -> fe.Mesh:
     """
     Build the inner core hex mesh:
@@ -220,6 +221,7 @@ def extrude_core_to_3d(
     - axial coordinate is Y
     - axial layers come from the interface nodes at R_core (to match ring's axial spacing)
     - (A_bot(R), A_top(R)) map the core top/bottom to the true profile
+    - Outer boundary nodes (R ≈ R_core) are transformed to match ring's revolve coordinates
     """
     core_xz = np.asarray(core_xz, dtype=float)
     core_quads = np.asarray(core_quads, dtype=np.int64)
@@ -239,10 +241,25 @@ def extrude_core_to_3d(
     A_bot_nodes = a_bot(r_nodes)
     A_top_nodes = a_top(r_nodes)
 
+    # Identify boundary nodes (R ≈ R_core) that need revolve coordinate transformation
+    tol_boundary = max(1e-6, float(R_core) * 0.01)
+    is_boundary = np.abs(r_nodes - float(R_core)) < tol_boundary
+    
+    # For boundary nodes, compute theta from current XZ coordinates
+    # Ring uses revolve: (R, A) -> (R*cos(θ), A, R*sin(θ)) where θ ∈ [0, phi]
+    # Core 2D is in XZ plane: X = R*cos(θ), Z = R*sin(θ) (but currently Z is just from 2D mesh)
+    # We need to ensure boundary nodes have Z = R_core * sin(θ) where θ = atan2(Z, X)
+    theta_boundary = np.arctan2(core_xz[is_boundary, 1], core_xz[is_boundary, 0])
+    
+    # Create corrected 2D coordinates for boundary nodes
+    core_xz_corrected = core_xz.copy()
+    core_xz_corrected[is_boundary, 0] = float(R_core) * np.cos(theta_boundary)
+    core_xz_corrected[is_boundary, 1] = float(R_core) * np.sin(theta_boundary)
+
     points_layers: List[np.ndarray] = []
     for eta in etas:
         A_layer = A_bot_nodes + float(eta) * (A_top_nodes - A_bot_nodes)  # axial(Y)
-        pts = np.column_stack([core_xz[:, 0], A_layer, core_xz[:, 1]])     # (X, Y, Z)
+        pts = np.column_stack([core_xz_corrected[:, 0], A_layer, core_xz_corrected[:, 1]])  # (X, Y, Z)
         points_layers.append(pts)
 
     points3d = np.vstack(points_layers)
@@ -258,3 +275,4 @@ def extrude_core_to_3d(
                           off1 + n0, off1 + n1, off1 + n2, off1 + n3])
 
     return fe.Mesh(points3d, np.asarray(hexes, dtype=np.int64), "hexahedron")
+
