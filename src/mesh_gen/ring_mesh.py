@@ -16,7 +16,7 @@ def mesh_outer_ring_quads(mesh_size: float, outer_surfaces: Sequence[int], axes:
     gmsh.option.setNumber("Mesh.Smoothing", 10)
     gmsh.option.setNumber("Mesh.Optimize", 1)
     gmsh.option.setNumber("Mesh.OptimizeNetgen", 1)
-    gmsh.option.setNumber("Mesh.Algorithm", 11)  # Frontal-Delaunay (good for recombination)
+    gmsh.option.setNumber("Mesh.Algorithm", 11)  # Quasi-structured Quad Meshing (experimental)
 
     # Try to make the 2D quad mesh closer to a structured grid:
     # apply transfinite constraints on "4-sided" outer profile surfaces (when detectable).
