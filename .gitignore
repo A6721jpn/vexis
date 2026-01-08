@@ -39,10 +39,10 @@ plugins/
 # --- FEBio auto-generated folders ---
 job/
 results/
-<<<<<<< HEAD
-=======
 temp/
->>>>>>> AG-GUI
+
+# --- Paper (internal, not for GitHub) ---
+paper/
 
 # --- Visualization / post files ---
 *.vtk

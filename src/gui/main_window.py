@@ -432,11 +432,11 @@ class MainWindow(QMainWindow):
         if self._sleep_enabled:
             prevent_sleep()
             self.sleep_action.setIcon(self._sleep_icon_on)
-            self.status_bar.showMessage("Sleep prevention: ON - PC will stay awake")
+            self.status_bar.showMessage("Anti-Sleep: ON - PC will stay awake")
         else:
             allow_sleep()
             self.sleep_action.setIcon(self._sleep_icon_off)
-            self.status_bar.showMessage("Sleep prevention: OFF - Normal behavior")
+            self.status_bar.showMessage("Anti-Sleep: OFF - Normal behavior")
 
     def on_exit_clicked(self):
         self.close()
