@@ -37,17 +37,25 @@ class AnalysisWorker(QThread):
 
         try:
             # --- Load Config ---
-            push_dist, sim_steps = -1.0, 20
+            push_dist, sim_steps = None, None  # Noneで「上書きしない」を表現
             febio_path = None
             template_name = "template2.feb"
+            material_name = None
+            num_threads = None
             
             if os.path.exists(self.config_path):
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     conf = yaml.safe_load(f).get("analysis", {})
-                    push_dist = conf.get("push_dist", push_dist)
-                    sim_steps = conf.get("time_steps", sim_steps)
-                    febio_path = conf.get("febio_path", None)
+                    # total_stroke優先、push_dist互換 (main.pyと同様)
+                    if "total_stroke" in conf:
+                        push_dist = -1.0 * abs(float(conf["total_stroke"]))
+                    elif "push_dist" in conf:
+                        push_dist = float(conf["push_dist"])
+                    sim_steps = conf.get("time_steps")
+                    febio_path = conf.get("febio_path")
                     template_name = conf.get("template_feb", template_name)
+                    material_name = conf.get("material_name")
+                    num_threads = conf.get("num_threads")
 
             # Resolve template path (relative to config dir usually, but here relative to root/base)
             # Assuming template is in the app root or specified path
@@ -94,7 +102,14 @@ class AnalysisWorker(QThread):
             # --- 2. Integration ---
             self.progress_updated.emit(job_id, 10, "Preparing FEBio model...")
             out_feb = os.path.join(self.temp_dir, f"{base_name}.feb")
-            helpers.run_integration(vtk_path, template_path, out_feb, push_dist, sim_steps, log_path=log_path)
+            # material.yamlのパスを解決
+            material_config_path = os.path.join(os.path.dirname(self.config_path), "material.yaml")
+            helpers.run_integration(
+                vtk_path, template_path, out_feb,
+                push_dist, sim_steps,
+                material_name, material_config_path,
+                log_path=log_path
+            )
             self.job.feb_path = out_feb
             self.progress_updated.emit(job_id, 15, "Prep Complete")
             
@@ -109,6 +124,7 @@ class AnalysisWorker(QThread):
             success = helpers.run_solver_and_extract(
                 out_feb, self.result_dir, 
                 log_path=log_path,
+                num_threads=num_threads,
                 febio_exe=febio_path,
                 log_callback=log_cb, 
                 progress_callback=prog_cb,
