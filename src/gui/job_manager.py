@@ -276,9 +276,17 @@ class JobManager(QObject):
             self.job_removed.emit(target_id)
 
     def start_batch(self, mesh_only=False):
-        # Reset COMPLETED jobs to PENDING and clean up their files
+        # Reset ALL non-pending jobs to PENDING and clean up their files
+        # This ensures that after Stop, pressing Start will run from the beginning
+        reset_statuses = [
+            JobStatus.COMPLETED, 
+            JobStatus.MESH_GENERATED, 
+            JobStatus.STOPPED, 
+            JobStatus.SKIPPED,
+            JobStatus.ERROR
+        ]
         for job in self.jobs.values():
-            if job.status == JobStatus.COMPLETED or job.status == JobStatus.MESH_GENERATED:
+            if job.status in reset_statuses:
                 self.cleanup_job_files(job.name)
                 job.status = JobStatus.PENDING
                 job.progress = 0

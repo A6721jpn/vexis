@@ -102,7 +102,7 @@ class MeshPreview(QWidget):
             self.plotter.clear()
             
             # Surface without internal edges (fixes Hex20 diagonal line issue)
-            self.plotter.add_mesh(mesh, show_edges=False, color="#68649e")
+            self.plotter.add_mesh(mesh, show_edges=False, color="#64709e")
             
             # Overlay true cell edges (not triangulated face diagonals)
             edges = mesh.extract_all_edges()
