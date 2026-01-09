@@ -76,7 +76,6 @@ class MeshPreview(QWidget):
         self.placeholder.hide()
         self.plotter = QtInteractor(self)
         self.layout.addWidget(self.plotter)
-        self.layout.addWidget(self.plotter)
         # Deep Dark Gradient Background (matches QSS Theme)
         self.plotter.set_background("#0B0F14", top="#141E2A")
 
@@ -101,7 +100,14 @@ class MeshPreview(QWidget):
         try:
             mesh = pv.read(vtk_path)
             self.plotter.clear()
-            self.plotter.add_mesh(mesh, show_edges=True, color="lightblue")
+            
+            # Surface without internal edges (fixes Hex20 diagonal line issue)
+            self.plotter.add_mesh(mesh, show_edges=False, color="#68649e")
+            
+            # Overlay true cell edges (not triangulated face diagonals)
+            edges = mesh.extract_all_edges()
+            self.plotter.add_mesh(edges, color="#333333", line_width=0.5)
+            
             self.plotter.reset_camera()
         except Exception as e:
             print(f"Mesh Preview Error: {e}")
