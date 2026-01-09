@@ -19,6 +19,43 @@ else:
 
 DEFAULT_TEMPLATE = os.path.join(BASE_DIR, "template2.feb")
 
+def get_solver_status():
+    """
+    Check solver availability and return status tuple.
+    Returns: (status_text, is_found)
+        - ("Embedded", True) if bundled solver exists
+        - ("External", True) if external solver exists
+        - ("Solver Not Found", False) if no solver found
+    """
+    bundled_path = os.path.join(BASE_DIR, "solver", "febio4.exe")
+    if os.path.exists(bundled_path):
+        return ("Embedded", True)
+    
+    # Check config.yaml for febio_path
+    config_path = os.path.join(BASE_DIR, "config", "config.yaml")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+            analysis = config.get("analysis", {})
+            febio_path = analysis.get("febio_path")
+            if febio_path and os.path.exists(febio_path):
+                return ("External", True)
+        except:
+            pass
+    
+    # Check environment variable
+    env_path = os.environ.get("FEBIO_PATH")
+    if env_path and os.path.exists(env_path):
+        return ("External", True)
+    
+    # Check default system path
+    system_path = r"C:\Program Files\FEBioStudio\bin\febio4.exe"
+    if os.path.exists(system_path):
+        return ("External", True)
+    
+    return ("Solver Not Found", False)
+
 @contextlib.contextmanager
 def redirect_output_to_file(log_path):
     """

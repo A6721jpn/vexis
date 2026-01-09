@@ -5,7 +5,7 @@ import glob
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QDockWidget, QListWidget, QListWidgetItem, QStackedWidget, 
                              QPushButton, QLabel, QProgressBar, QStatusBar,
-                             QToolBar, QApplication, QMessageBox)
+                             QToolBar, QApplication, QMessageBox, QSizePolicy)
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QAction, QIcon, QPixmap
 
@@ -13,8 +13,6 @@ from src.gui.models.job_item import JobItem, JobStatus
 from src.gui.file_watcher import InputFolderWatcher
 from src.gui.job_manager import JobManager
 from src.gui.panels.mesh_preview import MeshPreview
-from src.gui.panels.progress_panel import ProgressPanel
-from src.gui.panels.progress_panel import ProgressPanel
 from src.gui.panels.progress_panel import ProgressPanel
 from src.gui.panels.result_viewer import ResultViewer
 from src.gui.about_dialog import AboutDialog
@@ -160,6 +158,14 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
+        
+        # Solver Status Label (permanent right-aligned widget in status bar)
+        self.solver_status_label = QLabel("Solver: Checking...")
+        self.solver_status_label.setStyleSheet("color: #6F8098; font-size: 12px; padding-right: 5px;")
+        self.status_bar.addPermanentWidget(self.solver_status_label)
+        
+        # Initial solver check
+        self._update_solver_status()
 
     def _setup_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
@@ -388,7 +394,34 @@ class MainWindow(QMainWindow):
             self.preview_stack.setCurrentWidget(self.mesh_panel)
             self.mesh_panel.load_step(job.step_path)
 
+    def _update_solver_status(self):
+        """Check and update solver status display."""
+        from analysis_helpers import get_solver_status
+        status_text, is_found = get_solver_status()
+        
+        if is_found:
+            self.solver_status_label.setText(f"Solver: {status_text}")
+            self.solver_status_label.setStyleSheet("color: #6F8098; font-size: 12px; padding-right: 10px;")
+        else:
+            self.solver_status_label.setText(status_text)
+            self.solver_status_label.setStyleSheet("color: #FFD700; font-size: 12px; padding-right: 10px; font-weight: bold;")
+        
+        return is_found
+
     def on_start_clicked(self):
+        # Check solver status before starting
+        if not self._update_solver_status():
+            QMessageBox.warning(
+                self,
+                "Solver Not Found",
+                "FEBioソルバーが見つかりません。\n\n"
+                "以下のいずれかを確認してください：\n"
+                "・solver/febio4.exe が存在するか\n"
+                "・config.yaml の febio_path が正しいか\n"
+                "・FEBio Studio がインストールされているか"
+            )
+            return
+        
         # Validate filenames (ASCII check)
         invalid_jobs = self.job_manager.get_invalid_jobs()
         if invalid_jobs:
