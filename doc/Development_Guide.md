@@ -1,127 +1,238 @@
-# VEXIS Development Guide
+# VEXIS 開発ガイド
 
-**Version:** 0.4 (Proto4)  
-**Date:** 2025-12-18
+**Version:** 1.4.1  
+**Date:** 2026-01-18
 
-This document describes the architecture, implementation details, and design philosophy of the **Proto3** Automated Analysis System. It is intended for development engineers to quickly understand the codebase and perform modifications.
-
----
-
-## 1. System Overview
-
-**Proto2** is an automation pipeline designed to perform Finite Element Analysis (FEA) on rubber keycap geometries. It automates the entire loop from raw CAD (STEP file) to Simulation Results (`.csv`/`.png`).
-
-### Core Workflow
-1.  **Input**: CAD files (`.stp`) placed in `input/`.
-2.  **Mesh Generation**: Converts STEP to high-quality unstructured/structured hybrid mesh (`.vtk`).
-3.  **FEBio Preparation**:
-    *   Loads a template file (`template.feb`) which contains the physics, materials, and boundary conditions.
-    *   **Swaps** the old mesh in the template with the new mesh generated from the CAD.
-    *   **Reconstructs** NodeSets and Surfaces based on geometric rules (since IDs change).
-    *   **Aligns** the new mesh to the correct coordinate position.
-4.  **Solver Execution**: Runs `FEBio` solver in a monitored subprocess.
-5.  **Result Extraction**: Parses log files to extract Force-Displacement curves.
+本ドキュメントは、**VEXIS-CAE** 自動解析システムのアーキテクチャ、設計思想、および実装の詳細を記述したものです。開発エンジニアがコードベースを迅速に理解し、修正・拡張を行うための参考資料となります。
 
 ---
 
-## 2. Directory Structure
+## 1. システム概要
+
+**VEXIS-CAE** は、ゴム製キーキャップ形状に対する有限要素解析（FEA）を自動化するパイプラインアプリケーションです。CAD（STEP ファイル）からシミュレーション結果（`.csv`/`.png`/`.xplt`）まで、一連のワークフローを全自動で実行します。
+
+### 動作モード
+
+| `モード`     | `説明`                                                               |
+| :----------- | :------------------------------------------------------------------- |
+| `GUI モード` | `gui_main.py` から起動。PySide6 ベースのデスクトップアプリケーション |
+| `CLI モード` | `main.py` から起動。コマンドラインでのバッチ処理用                   |
+
+### コアワークフロー
 
 ```text
-Proto2/
-├── main.py                 # Entry point. Handles UI and high-level flow.
-├── analysis_helpers.py     # Worker functions (Mesh/Prep/Solver/Extract).
-├── template.feb            # Master FEBio simulation setup (physics-only).
-├── input/                  # Place .stp files here.
-├── results/                # Outputs go here.
-├── settings/               # Config files for Meshing.
-└── src/
-    ├── mesh_gen/           # [Submodule] Mesh Generation (Felupe/Gmsh)
-    └── mesh_swap/          # [Submodule] XML Manipulation & Geometry Logic
-        ├── mesh_replacer.py      # Core mesh replacement & alignment logic
-        ├── set_reconstructor.py  # Face/Node set reconstruction logic
-        └── geometry_utils.py     # Geometric predicates (is_bottom, is_outer, etc.)
+[STEP CAD] → [Mesh Generation] → [FEBio Prep] → [Solver] → [Result Extraction]
+     ↓              ↓                  ↓              ↓              ↓
+  input/         temp/*.vtk       temp/*.feb      solver/       results/
+```
+
+1. **入力**: CADファイル（`.stp`/`.step`）を `input/` に配置
+2. **メッシュ生成**: STEP → ハイブリッドメッシュ（`.vtk`）に変換
+3. **FEBio準備**:
+   - テンプレートファイル（`template.feb`）から物理条件・材料・境界条件を読み込み
+   - 新規メッシュをテンプレートにスワップ
+   - NodeSets/Surfaces を幾何学ルールで再構築
+   - メッシュを正しい座標位置にアライメント
+4. **ソルバー実行**: `FEBio` ソルバーをサブプロセスで実行
+5. **結果抽出**: ログファイルから荷重-変位曲線を抽出、3Dコンターマップを生成
+
+---
+
+## 2. ディレクトリ構造
+
+```text
+vexis/
+├── gui_main.py              # GUI版エントリーポイント (PySide6)
+├── main.py                  # CLI版エントリーポイント
+├── analysis_helpers.py      # ワーカー関数 (Mesh/Prep/Solver/Extract)
+├── build.py                 # PyInstallerビルドスクリプト
+├── template2.feb            # マスターFEBioシミュレーション設定
+├── requirements.txt         # Python依存ライブラリ
+│
+├── config/                  # 設定ファイル群
+│   ├── config.yaml          # メイン設定 (メッシュサイズ、解析パラメータ)
+│   └── material.yaml        # 材料定義
+│
+├── input/                   # STEP CADファイル配置ディレクトリ
+├── temp/                    # 一時ファイル (.vtk, .feb)
+├── results/                 # 解析結果出力先
+├── solver/                  # FEBio実行ファイル格納
+│
+├── src/
+│   ├── version.py           # バージョン定義
+│   ├── app_logger.py        # ロギング設定
+│   │
+│   ├── gui/                 # [GUIモジュール]
+│   │   ├── main_window.py       # メインウィンドウ
+│   │   ├── job_manager.py       # ジョブ管理（スケジューラ）
+│   │   ├── about_dialog.py      # バージョン情報ダイアログ
+│   │   ├── file_watcher.py      # ファイル監視
+│   │   ├── utils.py             # ユーティリティ
+│   │   ├── panels/              # UI パネル群
+│   │   │   ├── step_viewer.py       # STEP 3Dプレビュー
+│   │   │   ├── mesh_preview.py      # メッシュプレビュー
+│   │   │   └── contour_viewer.py    # 結果コンターマップ
+│   │   ├── models/              # データモデル
+│   │   └── styles/              # QSSスタイルシート
+│   │
+│   ├── mesh_gen/            # [メッシュ生成モジュール]
+│   │   ├── main.py              # メッシュ生成エントリー
+│   │   ├── geometry.py          # ジオメトリ処理
+│   │   ├── core_mesh.py         # コア領域メッシュ生成
+│   │   ├── ring_mesh.py         # リング領域メッシュ生成
+│   │   ├── config.py            # メッシュ設定パーサー
+│   │   └── utils.py             # ユーティリティ
+│   │
+│   ├── mesh_swap/           # [FEBio統合モジュール]
+│   │   ├── mesh_replacer.py     # メッシュスワップ＆アライメント
+│   │   ├── set_reconstructor.py # NodeSet/Surface再構築
+│   │   ├── geometry_utils.py    # 幾何判定関数
+│   │   └── result_analysis/     # 結果解析サブモジュール
+│   │
+│   ├── icons/               # アプリケーションアイコン
+│   └── libs/                # ベンダー化ライブラリ (waffleiron等)
+│
+├── doc/                     # ドキュメント
+├── dev_log/                 # 開発ログ
+└── test/                    # テストコード
 ```
 
 ---
 
-## 3. Key Components & Implementation Details
+## 3. 主要コンポーネント詳細
 
-### 3.1. Main Controller (`main.py`)
-*   **Role**: UI Orchestrator.
-*   **Features**:
-    *   **Parallel Progress Bars**: Displays a checklist `[ ]Mesh [ ]Prep [ ]Slvr` for the current file + an overall progress bar.
-    *   **Non-Blocking UI**: Uses `time.sleep(0.1)` and `pbar.refresh()` to ensure the UI updates even during heavy processing.
+### 3.1. GUI コントローラー (`src/gui/main_window.py`)
 
-### 3.2. Helpers (`analysis_helpers.py`)
-*   **Role**: Bridge between Python and External Tools.
-*   **Key Implementations**:
-        *   *Reason*: Gmsh (C++ library) outputs noise that conflicts with Python's `tqdm` progress bar. Subprocessing isolates this into `temp/workflow_detailed.log`.
-    *   **`run_solver_and_extract`**: Runs FEBio (`febio4.exe`).
-        *   Uses `subprocess.Popen` with `shell=False` and `bufsize=1` (Line Buffered) for **Real-Time Log Streaming**.
-        *   **Parser**: regex-matches `time=` or `time =` to update the progress bar incrementally.
-        *   **Total Time**: Recursively searches `template.feb` for `<Control>` tags (even nested in `<step>`) to calculate `{total_time} = {steps} * {dt}` correctly.
+- **役割**: ユーザーインターフェースの管理
+- **機能**:
+  - STEP ファイルのドラッグ＆ドロップ読み込み
+  - ジョブキュー管理とバッチ実行
+  - リアルタイム進捗表示
+  - 3D プレビュー（STEP/メッシュ/結果コンター）
 
-### 3.3. Mesh Gen (`src/mesh_gen/`)
-*   **Role**: Generates a hybrid mesh (Hex/Tet) from STEP.
-*   **Engine**: `gmsh` api via `felupe`.
-*   **Output**: `.vtk` file.
+### 3.2. ジョブマネージャー (`src/gui/job_manager.py`)
 
-### 3.4. Mesh Swap (`src/mesh_swap/`)
+- **役割**: 解析ジョブのスケジューリングと実行管理
+- **機能**:
+  - 非同期ジョブ実行（QThread）
+  - キャンセル・スキップ機能
+  - 進捗シグナル発行
 
-This is the most complex logic in Proto2. It resides in `mesh_replacer.py`.
+### 3.3. 解析ヘルパー (`analysis_helpers.py`)
 
-#### A. Mesh Alignment (Min-XYZ Match)
-When a new mesh is injected, its coordinate system might differ from the template.
-*   **Logic**:
-    1.  Calculate determining bounding box minimum (Min-X, Min-Y, Min-Z) of the **Old Mesh** in the template.
-    2.  Calculate the same for the **New Mesh**.
-    3.  Compute `Shift Vector = Old_Min - New_Min`.
-    4.  Apply this translation to all nodes in the new mesh.
-*   **Result**: The new mesh is placed exactly at the same "origin corner" as the old one. (No "Centroid" alignment, no manual offsets).
+- **役割**: Python と外部ツールのブリッジ
+- **主要関数**:
+  - `run_meshing()`: メッシュ生成をサブプロセスで実行
+  - `run_integration()`: FEBio ファイル準備
+  - `run_solver_and_extract()`: FEBio ソルバー実行＋リアルタイムログパース
 
-#### B. Set Reconstruction (`set_reconstructor.py`)
-Since Node IDs and Element IDs change completely, we cannot rely on ID lists. We reconstruct NodeSets and Surfaces based on **Geometric Rules**.
+### 3.4. メッシュ生成 (`src/mesh_gen/`)
 
-*   **Strategy A (Relative Bounds)**:
-    *   Used for: **Self-Contact** surfaces on the *same part*.
-    *   Logic: Defines a bounding box relative to the mesh's current dimensions (e.g., "Top 20% of the geometry").
-    *   *Why*: Distinguishes specific regions (like the "inside fold") that are geometrically distinct but adjacent.
-    *   **Fix implemented**: If a contact pair's Secondary Surface is on the *same part* as the Primary, Strategy A is forced.
+- **役割**: STEP から高品質ハイブリッドメッシュを生成
+- **エンジン**: `gmsh` API + `felupe`
+- **出力**: `.vtk` ファイル
+- **特徴**:
+  - コア領域（Hex）＋リング領域（Tet）のハイブリッド構造
+  - アダプティブメッシュサイズ対応
 
-*   **Strategy B (Proximity / Raycasting)**:
-    *   Used for: Interaction between *different parts* (e.g., Keycap vs Underlying Switch).
-    *   Logic: Findings faces that are "close enough" to the target partner part.
+### 3.5. メッシュスワップ (`src/mesh_swap/`)
 
-*   **Geometric Rules**:
-    *   `RUBBER_BOTTOM_CONTACTPrimary`: Uses rule `z_down_except_bottom`.
-    *   Logic: Selects all downward-facing normal vectors, *excluding* faces that lie exactly on the Z-min plane. (Captures filleted edges/chamfers but avoids the flat bottom).
+VEXIS で最も複雑なロジックを持つモジュールです。
 
----
+#### A. メッシュアライメント（Min-XYZ マッチング）
 
-## 4. How to Modify (For Engineers)
+新規メッシュをテンプレートに注入する際、座標系を合わせる必要があります。
 
-### If you need to change Mesh Resolution:
-*   Edit `settings/mesh_gen_adaptive_v6a.config`.
+```text
+Shift Vector = Old_Min - New_Min
+```
 
-### If you need to change Physics (Material, Boundary Conditions):
-*   Edit `template.feb` directly using FEBio Studio or a Text Editor.
-*   **Note**: Do NOT change the names of Named Selections (NodeSets/Surfaces) in the template if you rely on the Reconstructor logic to find them.
+- テンプレート内の**旧メッシュ**のバウンディングボックス最小点を取得
+- **新メッシュ**の最小点を計算
+- 差分ベクトルで新メッシュを平行移動
 
-### If you need to change Output/Logging:
-*   Real-time console format: Edit `main.py` -> `update_status`.
-*   FEBio Log parsing: Edit `analysis_helpers.py` -> `run_solver_and_extract`.
+#### B. セット再構築 (`set_reconstructor.py`)
 
-### If you observe "Negative Jacobian" or Contact Errors:
-*   Check `src/mesh_swap/set_reconstructor.py`.
-*   Verify if **Strategy A** (Explicit Bounds) needs to be adjusted for your new geometry shape. The "Relative Bounds" might need tuning if the aspect ratio of the keycap changes drastically.
+Node ID / Element ID は変化するため、ID リストに依存せず**幾何学ルール**で再構築します。
+
+| `戦略`                  | `用途`                     | `ロジック`                               |
+| :---------------------- | :------------------------- | :--------------------------------------- |
+| `Strategy A (相対境界)` | `同一パーツ上の自己接触面` | `メッシュ寸法に対する相対座標で領域定義` |
+| `Strategy B (近接判定)` | `異なるパーツ間の相互作用` | `ターゲットパーツへの距離で面を選択`     |
 
 ---
 
-## 5. Known Constraints
+## 4. 設定ファイル
 
-*   **Windows Only**: The "Job Skip" feature (`msvcrt`) is Windows-specific.
-*   **File Naming**: Input files must be `.stp` or `.step`.
-*   **Template Dependency**: The logic assumes the `template.feb` contains a valid mesh block named `RUBBER` (or the part name matches) to serve as a reference for alignment.
+### `config/config.yaml`
+
+```yaml
+mesh:
+  size: 0.8           # メッシュサイズ (mm)
+  refinement: true    # アダプティブ細分化
+  
+analysis:
+  total_stroke: 1.5   # 押し込み量 (mm)
+  time_steps: 20      # 時間ステップ数
+  num_threads: 4      # 並列スレッド数
+  contact_penalty: 5.0
+```
+
+### `config/material.yaml`
+
+材料パラメータ（超弾性材料モデル）を定義します。
 
 ---
-*End of Guide*
+
+## 5. 開発者向け修正ガイド
+
+### メッシュ解像度を変更したい場合
+
+`config/config.yaml` の `mesh.size` を編集してください。
+
+### 物理条件（材料、境界条件）を変更したい場合
+
+`template2.feb` を FEBio Studio またはテキストエディタで編集してください。
+
+> [!WARNING]
+> テンプレート内の Named Selections（NodeSets/Surfaces）の名前は変更しないでください。  
+> `set_reconstructor.py` がこれらの名前に依存しています。
+
+### ログ出力を変更したい場合
+
+- コンソール形式: `main.py` → `update_status`
+- FEBio ログ解析: `analysis_helpers.py` → `run_solver_and_extract`
+
+### 「Negative Jacobian」や接触エラーが発生した場合
+
+`src/mesh_swap/set_reconstructor.py` を確認してください。新しい形状のアスペクト比が大きく変わった場合、Strategy A の相対境界パラメータの調整が必要になることがあります。
+
+---
+
+## 6. 既知の制約事項
+
+| `制約`             | `詳細`                                      |
+| :----------------- | :------------------------------------------ |
+| `対応OS`           | `Windows のみ（msvcrt 依存）`               |
+| `入力ファイル`     | `.stp` または `.step` 形式のみ`             |
+| `テンプレート依存` | `template.feb 内に "RUBBER" パーツ名が必要` |
+
+---
+
+## 7. ビルド手順
+
+```powershell
+# 開発環境セットアップ
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+
+# 実行ファイルビルド
+python build.py
+```
+
+出力先: `out/VEXIS-CAE/`
+
+---
+
+*ガイド終了*

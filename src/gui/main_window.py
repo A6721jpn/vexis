@@ -5,7 +5,7 @@ import glob
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QDockWidget, QListWidget, QListWidgetItem, QStackedWidget, 
                              QPushButton, QLabel, QProgressBar, QStatusBar,
-                             QToolBar, QApplication, QMessageBox)
+                             QToolBar, QApplication, QMessageBox, QSizePolicy)
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QAction, QIcon, QPixmap
 
@@ -13,8 +13,6 @@ from src.gui.models.job_item import JobItem, JobStatus
 from src.gui.file_watcher import InputFolderWatcher
 from src.gui.job_manager import JobManager
 from src.gui.panels.mesh_preview import MeshPreview
-from src.gui.panels.progress_panel import ProgressPanel
-from src.gui.panels.progress_panel import ProgressPanel
 from src.gui.panels.progress_panel import ProgressPanel
 from src.gui.panels.result_viewer import ResultViewer
 from src.gui.about_dialog import AboutDialog
@@ -160,6 +158,14 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
+        
+        # Solver Status Label (permanent right-aligned widget in status bar)
+        self.solver_status_label = QLabel("Solver: Checking...")
+        self.solver_status_label.setStyleSheet("color: #6F8098; font-size: 12px; padding-right: 5px;")
+        self.status_bar.addPermanentWidget(self.solver_status_label)
+        
+        # Initial solver check
+        self._update_solver_status()
 
     def _setup_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
@@ -217,6 +223,11 @@ class MainWindow(QMainWindow):
         self.sleep_action.triggered.connect(self._on_sleep_toggle_clicked)
         toolbar.addAction(self.sleep_action)
 
+        # Mesh Generation Button (Positioned after Anti-Sleep)
+        self.gen_mesh_action = QAction(load_icon("meshgen", QStyle.SP_FileDialogListView, self.style()), "Gen Mesh", self)
+        self.gen_mesh_action.triggered.connect(self.on_gen_mesh_clicked)
+        toolbar.addAction(self.gen_mesh_action)
+
 
     def _connect_signals(self):
         self.file_watcher.file_added.connect(self.job_manager.add_job_from_path)
@@ -227,6 +238,7 @@ class MainWindow(QMainWindow):
         self.job_manager.status_changed.connect(self._on_job_status_changed)
         self.job_manager.progress_changed.connect(self._on_job_progress_changed)
         self.job_manager.log_added.connect(self._on_job_log_added)
+        self.job_manager.batch_finished.connect(self.on_stop_clicked)
 
     def _init_existing_jobs(self):
         for path in self.file_watcher.get_existing_files():
@@ -342,6 +354,12 @@ class MainWindow(QMainWindow):
             self.preview_stack.setCurrentWidget(self.mesh_panel)
             self.mesh_panel.load_step(job.step_path)
             return
+
+        # Priority 1.5: MESH GENERATED jobs show generated VTK preview
+        if job.status == JobStatus.MESH_GENERATED:
+            self.preview_stack.setCurrentWidget(self.mesh_panel)
+            self.mesh_panel.load_mesh(job.vtk_path)
+            return
             
         # Priority 2: RUNNING jobs show progress/log panel
         if job.status == JobStatus.RUNNING:
@@ -376,7 +394,34 @@ class MainWindow(QMainWindow):
             self.preview_stack.setCurrentWidget(self.mesh_panel)
             self.mesh_panel.load_step(job.step_path)
 
+    def _update_solver_status(self):
+        """Check and update solver status display."""
+        from analysis_helpers import get_solver_status
+        status_text, is_found = get_solver_status()
+        
+        if is_found:
+            self.solver_status_label.setText(f"Solver: {status_text}")
+            self.solver_status_label.setStyleSheet("color: #6F8098; font-size: 12px; padding-right: 10px;")
+        else:
+            self.solver_status_label.setText(status_text)
+            self.solver_status_label.setStyleSheet("color: #FFD700; font-size: 12px; padding-right: 10px; font-weight: bold;")
+        
+        return is_found
+
     def on_start_clicked(self):
+        # Check solver status before starting
+        if not self._update_solver_status():
+            QMessageBox.warning(
+                self,
+                "Solver Not Found",
+                "FEBioソルバーが見つかりません。\n\n"
+                "以下のいずれかを確認してください：\n"
+                "・solver/febio4.exe が存在するか\n"
+                "・config.yaml の febio_path が正しいか\n"
+                "・FEBio Studio がインストールされているか"
+            )
+            return
+        
         # Validate filenames (ASCII check)
         invalid_jobs = self.job_manager.get_invalid_jobs()
         if invalid_jobs:
@@ -390,13 +435,33 @@ class MainWindow(QMainWindow):
             return
 
         self.run_action.setEnabled(False)
+        self.gen_mesh_action.setEnabled(False)
         self.stop_action.setEnabled(True)
         self.skip_action.setEnabled(True)
         self.job_manager.start_batch()
 
+    def on_gen_mesh_clicked(self):
+        # Validate filenames (ASCII check)
+        invalid_jobs = self.job_manager.get_invalid_jobs()
+        if invalid_jobs:
+            names = "\n".join([f"・ {j.name}" for j in invalid_jobs])
+            QMessageBox.warning(
+                self, 
+                "不正なファイル名", 
+                f"以下のファイル名に日本語等の全角文字が含まれています：\n\n{names}\n\n"
+                "解析を確実に実行するため、ファイル名を半角英数字（例: case_0）に変更してください。"
+            )
+            return
+
+        self.run_action.setEnabled(False)
+        self.gen_mesh_action.setEnabled(False)
+        self.stop_action.setEnabled(True)
+        self.skip_action.setEnabled(True)
+        self.job_manager.start_batch(mesh_only=True)
 
     def on_stop_clicked(self):
         self.run_action.setEnabled(True)
+        self.gen_mesh_action.setEnabled(True)
         self.stop_action.setEnabled(False)
         self.skip_action.setEnabled(False)
         self.job_manager.stop_batch()

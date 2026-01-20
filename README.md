@@ -9,8 +9,10 @@ This software is licensed under the [GNU GPL v3](LICENSE).
 
 - **Adaptive Mesh Generation**: Automatically creates high-quality hybrid meshes (Hex/Tet) from STEP files.
 - **Modern GUI**: A polished, dark-themed interface built with PySide6.
-    - **Live Preview**: Intearctive 3D visualization of mesh and simulation results.
+    - **Live Preview**: Interactive 3D visualization of mesh and simulation results.
     - **Real-time Monitoring**: Track solver progress and batch status visually.
+    - **Mesh-Only Mode**: Generate and preview meshes without running solver via "Gen Mesh" button.
+    - **Anti-Sleep**: Prevent PC sleep during long batch analyses with one-click toggle.
 - **Robustness**:
     - **Crash Handler**: Catches and logs unexpected errors safely.
     - **Logging**: Automatic file logging to `logs/` directory for troubleshooting.
@@ -63,4 +65,4 @@ For more detailed information, please refer to the following documents:
 ---
 *Vexis is currently optimized for rubber keycap buckling analysis.*
 
-Copyright (c) 2024-2025 A.O.
+Copyright (c) 2024-2026 A.O.

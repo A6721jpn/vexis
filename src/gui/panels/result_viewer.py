@@ -479,22 +479,29 @@ class ResultViewer(QWidget):
                 if scalar in display_mesh.cell_data and scalar not in display_mesh.point_data:
                     display_mesh = display_mesh.cell_data_to_point_data()
                 
+                # Surface without internal edges (fixes Hex20 diagonal line issue)
                 self.plotter.add_mesh(
                     display_mesh, 
                     scalars=scalar, 
                     cmap=cmap, 
-                    show_edges=True,
-                    edge_color=edge_color,
-                    line_width=0.5,
+                    show_edges=False,
                     scalar_bar_args=sbar_args
                 )
+                
+                # Overlay true cell edges (not triangulated face diagonals)
+                edges = display_mesh.extract_all_edges()
+                self.plotter.add_mesh(edges, color=edge_color, line_width=0.5)
             else:
                 self.plotter.add_mesh(
                     display_mesh, 
                     color="lightblue", 
-                    show_edges=True,
-                    edge_color=edge_color
+                    show_edges=False
                 )
+                
+                # Overlay true cell edges
+                edges = display_mesh.extract_all_edges()
+                self.plotter.add_mesh(edges, color=edge_color, line_width=0.5)
+                
                 self.plotter.add_text("No scalar data for selected field", position='upper_left', color='white')
             
             if cam:

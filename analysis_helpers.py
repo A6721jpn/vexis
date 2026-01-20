@@ -19,6 +19,43 @@ else:
 
 DEFAULT_TEMPLATE = os.path.join(BASE_DIR, "template2.feb")
 
+def get_solver_status():
+    """
+    Check solver availability and return status tuple.
+    Returns: (status_text, is_found)
+        - ("Embedded", True) if bundled solver exists
+        - ("External", True) if external solver exists
+        - ("Solver Not Found", False) if no solver found
+    """
+    bundled_path = os.path.join(BASE_DIR, "solver", "febio4.exe")
+    if os.path.exists(bundled_path):
+        return ("Embedded", True)
+    
+    # Check config.yaml for febio_path
+    config_path = os.path.join(BASE_DIR, "config", "config.yaml")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+            analysis = config.get("analysis", {})
+            febio_path = analysis.get("febio_path")
+            if febio_path and os.path.exists(febio_path):
+                return ("External", True)
+        except:
+            pass
+    
+    # Check environment variable
+    env_path = os.environ.get("FEBIO_PATH")
+    if env_path and os.path.exists(env_path):
+        return ("External", True)
+    
+    # Check default system path
+    system_path = r"C:\Program Files\FEBioStudio\bin\febio4.exe"
+    if os.path.exists(system_path):
+        return ("External", True)
+    
+    return ("Solver Not Found", False)
+
 @contextlib.contextmanager
 def redirect_output_to_file(log_path):
     """
@@ -132,7 +169,7 @@ def run_meshing(step_file, config, temp_dir, log_path=None, log_callback=None, c
     return out_vtk
 
 
-def run_integration(vtk_path, template, out_feb, push_dist_override=None, steps=None, material_name=None, material_config_path=None, log_path=None):
+def run_integration(vtk_path, template, out_feb, push_dist_override=None, steps=None, material_name=None, material_config_path=None, contact_penalty=None, log_path=None):
     with redirect_output_to_file(log_path):
         print(f"--- Integration Log for {vtk_path} ---")
         
@@ -180,6 +217,9 @@ def run_integration(vtk_path, template, out_feb, push_dist_override=None, steps=
             
         if material_name and material_config_path:
             update_material_params(tree, material_name, material_config_path)
+
+        if contact_penalty is not None:
+             update_contact_penalty(tree, contact_penalty)
 
         save_file(tree, out_feb)
         print("-----------------------------------")
@@ -504,3 +544,32 @@ def update_material_params(tree, material_name, yaml_path):
         for key, val in el_conf.items():
             if key not in ["type", "c", "m"]:
                 set_val(elastic_node, key, val)
+
+def update_contact_penalty(tree, penalty_value):
+    """
+    Updates the penalty parameter for RUBBER_SELF_CONTACT.
+    """
+    if penalty_value is None:
+        return
+
+    print(f"Updating RUBBER_SELF_CONTACT penalty to: {penalty_value}")
+    root = tree.getroot()
+    
+    # Search for the contact definition
+    target_contact = None
+    for contact in root.iter("contact"):
+        if contact.get("name") == "RUBBER_SELF_CONTACT":
+            target_contact = contact
+            break
+            
+    if target_contact is None:
+        print("Warning: Contact 'RUBBER_SELF_CONTACT' not found in template.")
+        return
+        
+    # Update penalty
+    penalty_node = target_contact.find("penalty")
+    if penalty_node is None:
+        penalty_node = ET.SubElement(target_contact, "penalty")
+    
+    penalty_node.text = str(penalty_value)
+

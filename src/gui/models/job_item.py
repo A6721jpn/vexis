@@ -5,6 +5,7 @@ from typing import List, Optional
 class JobStatus(Enum):
     PENDING = auto()
     MESHING = auto()
+    MESH_GENERATED = auto() # New status for Mesh Generation Only mode
     RUNNING = auto()
     COMPLETED = auto()
     ERROR = auto()
@@ -29,6 +30,7 @@ class JobItem:
         status_map = {
             JobStatus.PENDING: "Pending",
             JobStatus.MESHING: "Meshing...",
+            JobStatus.MESH_GENERATED: "Mesh Generated",
             JobStatus.RUNNING: "Analyzing...",
             JobStatus.COMPLETED: "Completed",
             JobStatus.ERROR: "Error",
