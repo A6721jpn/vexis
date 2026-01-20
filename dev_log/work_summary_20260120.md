@@ -51,6 +51,29 @@
 | #8    | FEBio adaptive remeshing integration                        | Low    |
 | #9    | Cloud and HPC integration                                   | Low    |
 
+### 6. バージョンアップ (v1.4.2)
+- **対象ファイル:**
+  - `config/config.yaml`
+  - `src/version.py`
+  - `doc/release_notes.md`
+- **コミット:** `Bump version to 1.4.2 with release notes for documentation and dev environment improvements`
+
+### 7. .agentフォルダのGit追跡除外
+- **背景:** AIエージェント設定ファイル（.agent/）は個人のローカル設定であり、リポジトリに含める必要がなかった。
+- **対応:**
+  1. `.gitignore` に `.agent/` を追加。
+  2. `git rm -r --cached .agent` で追跡を解除。
+  3. リモートリポジトリにプッシュして削除を反映。
+- **コミット:** `Remove .agent folder from tracking and add to .gitignore`
+
+### 8. PRマージとブランチ整理
+- **PR #10:** `v1.4.2: Documentation and dev environment improvements`
+- **操作:**
+  1. V14XブランチからmainへのPRを作成。
+  2. PRをマージ。
+  3. リモート・ローカルのV14Xブランチを削除。
+- **PRコメント:** v1.3.0〜v1.4.2の全リリースノート差分を記載。
+
 ## 次回のタスク
-- [ ] GitHub Issues のプロジェクトボードへの整理
-- [ ] 優先度Mediumタスクの着手
+- [ ] 優先度Mediumタスク（Issue #1〜#4）の着手
+
