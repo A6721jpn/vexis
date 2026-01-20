@@ -4,7 +4,22 @@
 
 ---
 
-## Version 1.4.1 (メッシュ表示の修正) - Current
+## Version 1.4.2 (ドキュメント整備と開発環境改善) - Current
+**開発日**: 2026-01-20
+サブモジュール管理の改善とタスク管理体制を整備したマイナーアップデートです。
+
+- **開発環境改善:**
+    - **waffleironサブモジュールのフォーク**: 外部ライブラリ(`jpeloquin/waffleiron`)を自分のGitHubにフォークし、VEXIS固有の拡張（Tet4, Tet10, Tet15, Truss2クラス）を管理可能に。
+    - **GitHub CLIの導入**: `gh` コマンドによるIssue管理体制を構築。
+    - **GitHub Issuesへのタスク移行**: `todo.md` の未完了タスク9件をIssue化し、優先度ラベル（`priority: medium` / `priority: low`）を割り当て。
+
+- **ドキュメント:**
+    - **開発ガイドの日本語化**: `doc/Development_Guide.md` に日本語翻訳と詳細なビルド手順を追加。
+    - **エージェント設定の整備**: Gemini/Antigravity用ワークフロールール（`.agent/rules/GEMINI.md`）を追加。
+
+---
+
+## Version 1.4.1 (メッシュ表示の修正)
 **開発日**: 2026-01-09
 3Dビューワーにおけるメッシュ表示の不具合を修正したパッチリリースです。
 
