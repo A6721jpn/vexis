@@ -6,6 +6,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# AI Agent settings (local only)
+.agent/
+
 #Under development
 plugins/
 !plugins/advanced_mesher/
