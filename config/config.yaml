@@ -12,7 +12,7 @@ mesh:
 analysis:
   febio_path: C:/Program Files/FEBioStudio/bin/febio4.exe
   template_feb: template2.feb
-  material_name: Proto2_Trial_003
+  material_name: Proto2_Trial_005
   total_stroke: 1.0
   time_steps: 10
   num_threads: null
