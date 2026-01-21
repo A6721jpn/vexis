@@ -1,4 +1,11 @@
-import os, glob, sys, argparse
+# === CLI Mode: Disable GUI/Graphics before any imports ===
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("PYVISTA_OFF_SCREEN", "true")
+os.environ.setdefault("VTK_DEFAULT_OPENGL_WINDOW", "vtkOSOpenGLRenderWindow")
+# =========================================================
+
+import glob, sys, argparse
 import yaml
 import time
 from tqdm import tqdm

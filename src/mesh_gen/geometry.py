@@ -230,6 +230,13 @@ def analyze_geometry_and_split(stp_path: str, mesh_size: float, revolve_axis: in
         raise FileNotFoundError(stp_path)
 
     gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", 1)  # Enable terminal output
+    gmsh.option.setNumber("General.Verbosity", 2)  # Reduce verbosity
+    # Disable GUI/graphics to prevent Qt/FLTK initialization
+    try:
+        gmsh.option.setNumber("General.NoPopup", 1)
+    except:
+        pass
     gmsh.model.add("adaptive_mesh_gen")
     try:
         shapes = gmsh.model.occ.importShapes(stp_path)
