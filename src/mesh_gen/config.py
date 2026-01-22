@@ -15,6 +15,7 @@ class MeshGenConfig:
     core_radial_layers: int = 0     # 0=auto; otherwise explicit radial layers in O-grid block
     radial_mapping_beta: float = 2.0  # currently unused (kept for forward compatibility)
     merge_decimals: int = 5            # for merge_duplicate_points
+    output_format: str = "inp"         # Output format for intermediate mesh
 
     @staticmethod
     def from_yaml(path: str) -> "MeshGenConfig":
@@ -43,6 +44,7 @@ class MeshGenConfig:
             core_radial_layers=_get("core_radial_layers", int, MeshGenConfig.core_radial_layers),
             radial_mapping_beta=_get("radial_mapping_beta", float, MeshGenConfig.radial_mapping_beta),
             merge_decimals=_get("merge_decimals", int, MeshGenConfig.merge_decimals),
+            output_format=_get("output_format", str, MeshGenConfig.output_format),
         )
 
         if cfg.revolve_axis not in (0, 1, 2):
@@ -59,5 +61,15 @@ class MeshGenConfig:
             raise ValueError("core_radial_layers must be >= 0.")
         if cfg.mesh_dimension not in (1, 2):
             raise ValueError(f"mesh_dimension (element order) must be 1 (Linear) or 2 (Quadratic). Got {cfg.mesh_dimension}.")
+
+        # Enhanced Validation
+        if abs(cfg.revolve_angle - 90.0) > 1e-6:
+             raise ValueError(f"revolve_angle must be 90.0 degrees (current limitation). Got {cfg.revolve_angle}")
+        
+        if not (5 <= cfg.revolve_layers <= 100):
+             raise ValueError(f"revolve_layers must be between 5 and 100. Got {cfg.revolve_layers}")
+        
+        if cfg.output_format not in ("inp", "vtk", "msh"):
+             raise ValueError(f"output_format must be one of ['inp', 'vtk', 'msh']. Got {cfg.output_format}")
 
         return cfg

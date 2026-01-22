@@ -76,23 +76,25 @@ def main():
                 # --- CONFIG & PATHS ---
                 material_yaml = MATERIAL_CONFIG
                 mesh_config_path = CONFIG_FILE
-                push_dist, sim_steps, mat_name, num_threads = None, 20, None, None
-                contact_penalty = 5.0 
-                template_feb = DEFAULT_TEMPLATE
-                febio_path = None # Will use helper default if not in config
-
-                if os.path.exists(CONFIG_FILE):
-                    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                        full_conf = yaml.safe_load(f)
-                        conf = full_conf.get("analysis", {})
-                        if "total_stroke" in conf: push_dist = -1.0 * abs(float(conf["total_stroke"]))
-                        elif "push_dist" in conf: push_dist = float(conf["push_dist"])
-                        sim_steps = conf.get("time_steps", sim_steps)
-                        mat_name = conf.get("material_name")
-                        num_threads = conf.get("num_threads")
-                        contact_penalty = conf.get("contact_penalty", 5.0)
-                        template_feb = conf.get("template_feb", template_feb)
-                        febio_path = conf.get("febio_path")
+                # --- CONFIG & PATHS ---
+                material_yaml = MATERIAL_CONFIG
+                mesh_config_path = CONFIG_FILE
+                
+                try:
+                    from src.config_loader import AnalysisConfig
+                    an_cfg = AnalysisConfig.from_yaml(CONFIG_FILE)
+                    
+                    push_dist = -1.0 * abs(an_cfg.total_stroke)
+                    sim_steps = an_cfg.time_steps
+                    mat_name = an_cfg.material_name
+                    num_threads = an_cfg.num_threads
+                    contact_penalty = an_cfg.contact_penalty
+                    template_feb = an_cfg.template_feb
+                    febio_path = an_cfg.febio_path if an_cfg.febio_path else None
+                except Exception as e:
+                    tqdm.write(f"\n! Configuration Error: {e}")
+                    # Stop workflow if config is invalid
+                    sys.exit(1)
 
                 # 1. Mesh Gen
                 vtk_path = os.path.join(TEMP_DIR, f"{name_no_ext}.vtk")
