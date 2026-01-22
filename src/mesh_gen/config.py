@@ -57,7 +57,7 @@ class MeshGenConfig:
             raise ValueError("core_inner_ratio must be in (0,1).")
         if cfg.core_radial_layers < 0:
             raise ValueError("core_radial_layers must be >= 0.")
-        if cfg.mesh_dimension < 1:
-            raise ValueError("mesh_dimension (element order) must be >= 1.")
+        if cfg.mesh_dimension not in (1, 2):
+            raise ValueError(f"mesh_dimension (element order) must be 1 (Linear) or 2 (Quadratic). Got {cfg.mesh_dimension}.")
 
         return cfg
