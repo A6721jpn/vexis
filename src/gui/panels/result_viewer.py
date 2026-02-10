@@ -70,7 +70,7 @@ class ResultViewer(QWidget):
         self.render_mesh = None
         self.mesh_actor = None
         self.edge_actor = None
-        self.surface_edge_lines = None
+        self.surface_edge_point_ids = None
         self.surface_edge_mesh = None
         self._active_scalar_name = None
         self._active_scalar_assoc = None  # "point" | "cell" | None
@@ -265,7 +265,7 @@ class ResultViewer(QWidget):
         self.render_mesh = None
         self.mesh_actor = None
         self.edge_actor = None
-        self.surface_edge_lines = None
+        self.surface_edge_point_ids = None
         self.surface_edge_mesh = None
         self._active_scalar_name = None
         self._active_scalar_assoc = None
@@ -447,11 +447,27 @@ class ResultViewer(QWidget):
             self._update_fields()
             self.base_points = np.array(self.grid.points, copy=True)
             self.render_mesh = self.grid.copy(deep=True)
-            self.surface_edge_lines = self.loader.get_surface_edge_lines()
-            if self.surface_edge_lines.size > 0:
-                self.surface_edge_mesh = pv.PolyData(np.array(self.base_points, copy=True))
-                self.surface_edge_mesh.lines = self.surface_edge_lines
+            raw_lines = self.loader.get_surface_edge_lines()
+            if raw_lines.size > 0:
+                edge_pairs = raw_lines.reshape(-1, 3)[:, 1:3]
+                used_ids = np.unique(edge_pairs.reshape(-1))
+
+                remap = np.full(self.base_points.shape[0], -1, dtype=np.int64)
+                remap[used_ids] = np.arange(used_ids.shape[0], dtype=np.int64)
+                compact_pairs = remap[edge_pairs]
+
+                compact_lines = np.empty(compact_pairs.shape[0] * 3, dtype=np.int64)
+                compact_lines[0::3] = 2
+                compact_lines[1::3] = compact_pairs[:, 0]
+                compact_lines[2::3] = compact_pairs[:, 1]
+
+                self.surface_edge_point_ids = used_ids
+                self.surface_edge_mesh = pv.PolyData(
+                    np.array(self.base_points[self.surface_edge_point_ids], copy=True)
+                )
+                self.surface_edge_mesh.lines = compact_lines
             else:
+                self.surface_edge_point_ids = None
                 self.surface_edge_mesh = None
             self._update_step_labels(self.current_step_idx)
 
@@ -610,8 +626,11 @@ class ResultViewer(QWidget):
                 with np.errstate(all="ignore"):
                     points = self.base_points + disp[:, :3]
         self.render_mesh.points = points
-        if self.surface_edge_mesh is not None:
-            self.surface_edge_mesh.points = points
+        if self.surface_edge_mesh is not None and self.surface_edge_point_ids is not None:
+            self.surface_edge_mesh.points = np.array(
+                points[self.surface_edge_point_ids],
+                copy=True,
+            )
 
     def _to_scalar_magnitude(self, values):
         """Convert scalar/vector/tensor array to 1D magnitude for stable contour coloring."""
@@ -777,6 +796,7 @@ class ResultViewer(QWidget):
                 self.surface_edge_mesh,
                 color=edge_color,
                 line_width=0.5,
+                render_points_as_spheres=False,
                 name="result_edges",
                 reset_camera=False,
                 render=False,
