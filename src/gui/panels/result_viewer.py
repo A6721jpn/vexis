@@ -68,11 +68,11 @@ class ResultViewer(QWidget):
         self.base_points = None
         self.render_mesh = None
         self.mesh_actor = None
-        self.edge_actor = None
         self._active_scalar_name = None
         self._active_scalar_assoc = None  # "point" | "cell" | None
         self._active_scalar_range = None
-        self._last_edges_step = None
+        self._active_show_edges = None
+        self._global_scalar_ranges = {}
         self._is_slider_dragging = False
         self._is_updating_display = False
         self._pending_step_idx = None
@@ -261,11 +261,11 @@ class ResultViewer(QWidget):
         self.base_points = None
         self.render_mesh = None
         self.mesh_actor = None
-        self.edge_actor = None
         self._active_scalar_name = None
         self._active_scalar_assoc = None
         self._active_scalar_range = None
-        self._last_edges_step = None
+        self._active_show_edges = None
+        self._global_scalar_ranges = {}
         self._is_slider_dragging = False
         self._is_updating_display = False
         self._pending_step_idx = None
@@ -625,6 +625,53 @@ class ResultViewer(QWidget):
             vmax = vmin + 1e-12
         return (vmin, vmax)
 
+    def _get_global_scalar_range(self, scalar, assoc):
+        """Return (min, max) over all completed steps for the selected display scalar."""
+        key = (scalar, assoc)
+        if key in self._global_scalar_ranges:
+            return self._global_scalar_ranges[key]
+
+        gmin = np.inf
+        gmax = -np.inf
+        found = False
+
+        for step_idx in range(len(self.steps)):
+            cached = self.loader.get_cached_step(step_idx)
+            if assoc == "point":
+                raw = cached["point"].get(scalar)
+                if raw is None:
+                    continue
+                point_values = self._to_scalar_magnitude(raw)
+            else:
+                raw = cached["cell"].get(scalar)
+                if raw is None:
+                    continue
+                cell_values = self._to_scalar_magnitude(raw)
+                point_values = self.loader.domain_scalar_to_point(cell_values)
+
+            finite = np.asarray(point_values, dtype=float).reshape(-1)
+            finite = finite[np.isfinite(finite)]
+            if finite.size == 0:
+                continue
+
+            local_min = float(np.min(finite))
+            local_max = float(np.max(finite))
+            if local_min < gmin:
+                gmin = local_min
+            if local_max > gmax:
+                gmax = local_max
+            found = True
+
+        if not found:
+            rng = None
+        else:
+            if gmax <= gmin:
+                gmax = gmin + 1e-12
+            rng = (gmin, gmax)
+
+        self._global_scalar_ranges[key] = rng
+        return rng
+
     def _update_active_scalar_array(self, scalar, assoc):
         if not scalar or not assoc:
             return False
@@ -641,7 +688,9 @@ class ResultViewer(QWidget):
 
         self.render_mesh.point_data["_active_scalar"] = point_values
         self.render_mesh.set_active_scalars("_active_scalar", preference="point")
-        self._active_scalar_range = self._finite_range(point_values)
+        self._active_scalar_range = self._get_global_scalar_range(scalar, assoc)
+        if self._active_scalar_range is None:
+            self._active_scalar_range = self._finite_range(point_values)
 
         if self.mesh_actor is not None and self._active_scalar_range is not None:
             try:
@@ -659,31 +708,37 @@ class ResultViewer(QWidget):
             "font_family": "arial",
         }
 
-    def _rebuild_mesh_actor(self, scalar, assoc, reset_cam=False):
+    def _rebuild_mesh_actor(self, scalar, assoc, show_edges=False, reset_cam=False):
         cam = self.plotter.camera_position if (self.mesh_actor and not reset_cam) else None
 
         self.plotter.remove_actor("result_mesh", reset_camera=False, render=False)
-        self.plotter.remove_actor("result_edges", reset_camera=False, render=False)
         self.plotter.remove_actor("scalar_warning", reset_camera=False, render=False)
 
         cmap = self.theme.get("colormap", "turbo")
+        edge_color = self.theme.get("edge_color", "#333333")
         if scalar and assoc:
             self.mesh_actor = self.plotter.add_mesh(
                 self.render_mesh,
                 scalars="_active_scalar",
                 cmap=cmap,
-                show_edges=False,
+                show_edges=show_edges,
+                edge_color=edge_color,
+                line_width=0.5,
                 clim=self._active_scalar_range,
                 scalar_bar_args=self._scalar_bar_args(scalar),
                 name="result_mesh",
+                reset_camera=False,
                 render=False,
             )
         else:
             self.mesh_actor = self.plotter.add_mesh(
                 self.render_mesh,
                 color="lightblue",
-                show_edges=False,
+                show_edges=show_edges,
+                edge_color=edge_color,
+                line_width=0.5,
                 name="result_mesh",
+                reset_camera=False,
                 render=False,
             )
             self.plotter.add_text(
@@ -700,29 +755,7 @@ class ResultViewer(QWidget):
 
         self._active_scalar_name = scalar
         self._active_scalar_assoc = assoc
-        self._last_edges_step = None
-
-    def _update_edges_actor(self, high_quality):
-        wants_edges = bool(self.edge_checkbox.isChecked()) and high_quality
-        if not wants_edges:
-            self.plotter.remove_actor("result_edges", reset_camera=False, render=False)
-            self._last_edges_step = None
-            self.edge_actor = None
-            return
-
-        if self._last_edges_step == self.current_step_idx and self.edge_actor is not None:
-            return
-
-        edge_color = self.theme.get("edge_color", "#333333")
-        edges = self.render_mesh.extract_all_edges()
-        self.edge_actor = self.plotter.add_mesh(
-            edges,
-            color=edge_color,
-            line_width=0.5,
-            name="result_edges",
-            render=False,
-        )
-        self._last_edges_step = self.current_step_idx
+        self._active_show_edges = show_edges
 
     def _update_display(self, reset_cam=False, high_quality=True):
         """Update 3D display with current step and field."""
@@ -738,11 +771,13 @@ class ResultViewer(QWidget):
 
             self._apply_displacement_to_render_mesh()
             scalar, assoc = self._resolve_scalar()
+            show_edges = bool(self.edge_checkbox.isChecked()) and high_quality
 
             rebuild_actor = (
                 self.mesh_actor is None
                 or scalar != self._active_scalar_name
                 or assoc != self._active_scalar_assoc
+                or show_edges != self._active_show_edges
             )
 
             has_scalar = False
@@ -756,11 +791,15 @@ class ResultViewer(QWidget):
                 self._active_scalar_range = None
 
             if rebuild_actor:
-                self._rebuild_mesh_actor(scalar, assoc, reset_cam=reset_cam)
+                self._rebuild_mesh_actor(
+                    scalar,
+                    assoc,
+                    show_edges=show_edges,
+                    reset_cam=reset_cam,
+                )
             elif reset_cam:
                 self.plotter.reset_camera()
 
-            self._update_edges_actor(high_quality=high_quality)
             self.plotter.render()
         except Exception as e:
             print(f"Display Error: {e}")

@@ -198,6 +198,13 @@ class WaffleironLoader:
             if progress_callback and (idx == 0 or (idx + 1) % 5 == 0 or idx == total - 1):
                 progress_callback(f"Caching step data... ({idx + 1}/{total})")
 
+    def get_cached_step(self, step_idx: int):
+        """Return cached step data, building it on demand."""
+        cached = self._step_cache.get(step_idx)
+        if cached is None:
+            cached = self._build_step_cache(step_idx)
+        return cached
+
     def domain_scalar_to_point(self, cell_scalar):
         """
         Average 1D domain scalar values to point values using mesh connectivity.
