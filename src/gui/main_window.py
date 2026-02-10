@@ -37,6 +37,8 @@ class MainWindow(QMainWindow):
             # Running as Python script
             base_dir = os.path.dirname(os.path.abspath(__file__)) # this is src/gui
             root_dir = os.path.dirname(os.path.dirname(base_dir)) # this is root
+
+        self.root_dir = root_dir
         
         # Set window icon (Delegated to QApplication in gui_main.py)
         # icon_path = os.path.join(root_dir, "icon.ico")
@@ -473,13 +475,11 @@ class MainWindow(QMainWindow):
         self._init_existing_jobs()
 
     def on_edit_config_clicked(self):
-        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__)))), "config", "config.yaml")
+        config_path = os.path.join(self.root_dir, "config", "config.yaml")
         self._open_in_editor(config_path)
 
     def on_edit_material_clicked(self):
-        material_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__)))), "config", "material.yaml")
+        material_path = os.path.join(self.root_dir, "config", "material.yaml")
         self._open_in_editor(material_path)
 
     def _open_in_editor(self, file_path):
