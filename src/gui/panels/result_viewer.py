@@ -2,6 +2,7 @@ import os
 import re
 import numpy as np
 import pandas as pd
+import pyvista as pv
 from PySide6.QtCore import Qt, Signal, QThread, QTimer
 from PySide6.QtWidgets import (
     QWidget,
@@ -68,10 +69,12 @@ class ResultViewer(QWidget):
         self.base_points = None
         self.render_mesh = None
         self.mesh_actor = None
+        self.edge_actor = None
+        self.surface_edge_lines = None
+        self.surface_edge_mesh = None
         self._active_scalar_name = None
         self._active_scalar_assoc = None  # "point" | "cell" | None
         self._active_scalar_range = None
-        self._active_show_edges = None
         self._global_scalar_ranges = {}
         self._is_slider_dragging = False
         self._is_updating_display = False
@@ -261,10 +264,12 @@ class ResultViewer(QWidget):
         self.base_points = None
         self.render_mesh = None
         self.mesh_actor = None
+        self.edge_actor = None
+        self.surface_edge_lines = None
+        self.surface_edge_mesh = None
         self._active_scalar_name = None
         self._active_scalar_assoc = None
         self._active_scalar_range = None
-        self._active_show_edges = None
         self._global_scalar_ranges = {}
         self._is_slider_dragging = False
         self._is_updating_display = False
@@ -442,6 +447,12 @@ class ResultViewer(QWidget):
             self._update_fields()
             self.base_points = np.array(self.grid.points, copy=True)
             self.render_mesh = self.grid.copy(deep=True)
+            self.surface_edge_lines = self.loader.get_surface_edge_lines()
+            if self.surface_edge_lines.size > 0:
+                self.surface_edge_mesh = pv.PolyData(np.array(self.base_points, copy=True))
+                self.surface_edge_mesh.lines = self.surface_edge_lines
+            else:
+                self.surface_edge_mesh = None
             self._update_step_labels(self.current_step_idx)
 
             self._queue_display_update(
@@ -599,6 +610,8 @@ class ResultViewer(QWidget):
                 with np.errstate(all="ignore"):
                     points = self.base_points + disp[:, :3]
         self.render_mesh.points = points
+        if self.surface_edge_mesh is not None:
+            self.surface_edge_mesh.points = points
 
     def _to_scalar_magnitude(self, values):
         """Convert scalar/vector/tensor array to 1D magnitude for stable contour coloring."""
@@ -708,22 +721,19 @@ class ResultViewer(QWidget):
             "font_family": "arial",
         }
 
-    def _rebuild_mesh_actor(self, scalar, assoc, show_edges=False, reset_cam=False):
+    def _rebuild_mesh_actor(self, scalar, assoc, reset_cam=False):
         cam = self.plotter.camera_position if (self.mesh_actor and not reset_cam) else None
 
         self.plotter.remove_actor("result_mesh", reset_camera=False, render=False)
         self.plotter.remove_actor("scalar_warning", reset_camera=False, render=False)
 
         cmap = self.theme.get("colormap", "turbo")
-        edge_color = self.theme.get("edge_color", "#333333")
         if scalar and assoc:
             self.mesh_actor = self.plotter.add_mesh(
                 self.render_mesh,
                 scalars="_active_scalar",
                 cmap=cmap,
-                show_edges=show_edges,
-                edge_color=edge_color,
-                line_width=0.5,
+                show_edges=False,
                 clim=self._active_scalar_range,
                 scalar_bar_args=self._scalar_bar_args(scalar),
                 name="result_mesh",
@@ -734,9 +744,7 @@ class ResultViewer(QWidget):
             self.mesh_actor = self.plotter.add_mesh(
                 self.render_mesh,
                 color="lightblue",
-                show_edges=show_edges,
-                edge_color=edge_color,
-                line_width=0.5,
+                show_edges=False,
                 name="result_mesh",
                 reset_camera=False,
                 render=False,
@@ -755,7 +763,24 @@ class ResultViewer(QWidget):
 
         self._active_scalar_name = scalar
         self._active_scalar_assoc = assoc
-        self._active_show_edges = show_edges
+
+    def _update_surface_edge_actor(self, show_edges):
+        if not show_edges or self.surface_edge_mesh is None:
+            if self.edge_actor is not None:
+                self.plotter.remove_actor("result_edges", reset_camera=False, render=False)
+                self.edge_actor = None
+            return
+
+        if self.edge_actor is None:
+            edge_color = self.theme.get("edge_color", "#333333")
+            self.edge_actor = self.plotter.add_mesh(
+                self.surface_edge_mesh,
+                color=edge_color,
+                line_width=0.5,
+                name="result_edges",
+                reset_camera=False,
+                render=False,
+            )
 
     def _update_display(self, reset_cam=False, high_quality=True):
         """Update 3D display with current step and field."""
@@ -777,7 +802,6 @@ class ResultViewer(QWidget):
                 self.mesh_actor is None
                 or scalar != self._active_scalar_name
                 or assoc != self._active_scalar_assoc
-                or show_edges != self._active_show_edges
             )
 
             has_scalar = False
@@ -794,12 +818,12 @@ class ResultViewer(QWidget):
                 self._rebuild_mesh_actor(
                     scalar,
                     assoc,
-                    show_edges=show_edges,
                     reset_cam=reset_cam,
                 )
             elif reset_cam:
                 self.plotter.reset_camera()
 
+            self._update_surface_edge_actor(show_edges)
             self.plotter.render()
         except Exception as e:
             print(f"Display Error: {e}")

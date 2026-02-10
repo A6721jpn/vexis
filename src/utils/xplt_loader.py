@@ -25,6 +25,22 @@ class WaffleironLoader:
         20: 25,
     }
 
+    # Hex corner-node topology (use corners even for higher-order hex elements)
+    _HEX_FACE_NODE_IDS = (
+        (0, 1, 2, 3),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (1, 2, 6, 5),
+        (2, 3, 7, 6),
+        (3, 0, 4, 7),
+    )
+    _FACE_EDGE_NODE_IDS = (
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0),
+    )
+
     def __init__(self, filepath):
         self.filepath = filepath
         self.xplt_data = None
@@ -37,6 +53,7 @@ class WaffleironLoader:
         self._step_cache = {}  # step_idx -> {"point": {name: np.ndarray}, "cell": {name: np.ndarray}}
         self._conn_point_ids = np.array([], dtype=np.int64)
         self._conn_cell_ids = np.array([], dtype=np.int64)
+        self._surface_edge_pairs = np.empty((0, 2), dtype=np.int64)
         self._load()
 
     def _load(self):
@@ -55,6 +72,7 @@ class WaffleironLoader:
         self._n_points = len(self.w_mesh.nodes)
         self._n_cells = len(self.w_mesh.elements)
         self._build_connectivity_index()
+        self._build_surface_edge_index()
 
     def _build_connectivity_index(self):
         """Build flattened (point_id, cell_id) connectivity for fast cell->point averaging."""
@@ -72,6 +90,50 @@ class WaffleironLoader:
         else:
             self._conn_point_ids = np.array([], dtype=np.int64)
             self._conn_cell_ids = np.array([], dtype=np.int64)
+
+    def _iter_hex_corner_nodes(self):
+        """Yield corner-node tuples for hex elements only."""
+        for el in self.w_mesh.elements:
+            node_ids = np.asarray(el.ids, dtype=np.int64)
+            if node_ids.size < 8:
+                continue
+            if not el.__class__.__name__.startswith("Hex"):
+                continue
+            yield tuple(int(v) for v in node_ids[:8])
+
+    def _build_surface_edge_index(self):
+        """
+        Build unique edge pairs on boundary faces for hex meshes.
+
+        This excludes internal edges and face-diagonal artifacts.
+        """
+        face_count = {}
+        face_nodes = {}
+
+        for corners in self._iter_hex_corner_nodes():
+            for face_idx in self._HEX_FACE_NODE_IDS:
+                f_nodes = tuple(corners[i] for i in face_idx)
+                f_key = tuple(sorted(f_nodes))
+                face_count[f_key] = face_count.get(f_key, 0) + 1
+                if f_key not in face_nodes:
+                    face_nodes[f_key] = f_nodes
+
+        edge_set = set()
+        for f_key, cnt in face_count.items():
+            if cnt != 1:
+                continue
+            f_nodes = face_nodes[f_key]
+            for ia, ib in self._FACE_EDGE_NODE_IDS:
+                a = f_nodes[ia]
+                b = f_nodes[ib]
+                if a == b:
+                    continue
+                edge_set.add((a, b) if a < b else (b, a))
+
+        if edge_set:
+            self._surface_edge_pairs = np.asarray(sorted(edge_set), dtype=np.int64)
+        else:
+            self._surface_edge_pairs = np.empty((0, 2), dtype=np.int64)
 
     def get_mesh(self) -> pv.UnstructuredGrid:
         """
@@ -204,6 +266,21 @@ class WaffleironLoader:
         if cached is None:
             cached = self._build_step_cache(step_idx)
         return cached
+
+    def get_surface_edge_lines(self):
+        """
+        Return PyVista PolyData line connectivity for boundary hex edges only.
+
+        Output format is flattened [2, i0, j0, 2, i1, j1, ...].
+        """
+        if self._surface_edge_pairs.size == 0:
+            return np.array([], dtype=np.int64)
+        n_edges = self._surface_edge_pairs.shape[0]
+        lines = np.empty(n_edges * 3, dtype=np.int64)
+        lines[0::3] = 2
+        lines[1::3] = self._surface_edge_pairs[:, 0]
+        lines[2::3] = self._surface_edge_pairs[:, 1]
+        return lines
 
     def domain_scalar_to_point(self, cell_scalar):
         """
