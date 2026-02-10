@@ -71,6 +71,7 @@ class ResultViewer(QWidget):
         self.edge_actor = None
         self._active_scalar_name = None
         self._active_scalar_assoc = None  # "point" | "cell" | None
+        self._active_scalar_range = None
         self._last_edges_step = None
         self._is_slider_dragging = False
         self._is_updating_display = False
@@ -108,7 +109,7 @@ class ResultViewer(QWidget):
             "legend_label_size": 14,
             "edge_color": "#333333",
             "colormap": "turbo",
-            "show_edges": False,
+            "show_edges": True,
         }
 
         qss_paths = [
@@ -263,6 +264,7 @@ class ResultViewer(QWidget):
         self.edge_actor = None
         self._active_scalar_name = None
         self._active_scalar_assoc = None
+        self._active_scalar_range = None
         self._last_edges_step = None
         self._is_slider_dragging = False
         self._is_updating_display = False
@@ -598,18 +600,54 @@ class ResultViewer(QWidget):
                     points = self.base_points + disp[:, :3]
         self.render_mesh.points = points
 
+    def _to_scalar_magnitude(self, values):
+        """Convert scalar/vector/tensor array to 1D magnitude for stable contour coloring."""
+        arr = np.asarray(values, dtype=float)
+        if arr.ndim == 1:
+            return arr
+        if arr.shape[0] == 0:
+            return np.asarray([], dtype=float)
+        flat = arr.reshape(arr.shape[0], -1)
+        with np.errstate(all="ignore"):
+            return np.linalg.norm(flat, axis=1)
+
+    @staticmethod
+    def _finite_range(values):
+        arr = np.asarray(values, dtype=float).reshape(-1)
+        if arr.size == 0:
+            return None
+        finite = arr[np.isfinite(arr)]
+        if finite.size == 0:
+            return None
+        vmin = float(np.min(finite))
+        vmax = float(np.max(finite))
+        if vmax <= vmin:
+            vmax = vmin + 1e-12
+        return (vmin, vmax)
+
     def _update_active_scalar_array(self, scalar, assoc):
         if not scalar or not assoc:
             return False
+
         if assoc == "point":
             if scalar not in self.grid.point_data:
                 return False
-            self.render_mesh.point_data[scalar] = np.asarray(self.grid.point_data[scalar])
+            point_values = self._to_scalar_magnitude(self.grid.point_data[scalar])
         else:
             if scalar not in self.grid.cell_data:
                 return False
-            self.render_mesh.cell_data[scalar] = np.asarray(self.grid.cell_data[scalar])
-        self.render_mesh.set_active_scalars(scalar, preference=assoc)
+            cell_values = self._to_scalar_magnitude(self.grid.cell_data[scalar])
+            point_values = self.loader.domain_scalar_to_point(cell_values)
+
+        self.render_mesh.point_data["_active_scalar"] = point_values
+        self.render_mesh.set_active_scalars("_active_scalar", preference="point")
+        self._active_scalar_range = self._finite_range(point_values)
+
+        if self.mesh_actor is not None and self._active_scalar_range is not None:
+            try:
+                self.mesh_actor.mapper.scalar_range = self._active_scalar_range
+            except Exception:
+                pass
         return True
 
     def _scalar_bar_args(self, scalar):
@@ -632,9 +670,10 @@ class ResultViewer(QWidget):
         if scalar and assoc:
             self.mesh_actor = self.plotter.add_mesh(
                 self.render_mesh,
-                scalars=scalar,
+                scalars="_active_scalar",
                 cmap=cmap,
                 show_edges=False,
+                clim=self._active_scalar_range,
                 scalar_bar_args=self._scalar_bar_args(scalar),
                 name="result_mesh",
                 render=False,
@@ -706,8 +745,15 @@ class ResultViewer(QWidget):
                 or assoc != self._active_scalar_assoc
             )
 
+            has_scalar = False
             if scalar and assoc:
-                self._update_active_scalar_array(scalar, assoc)
+                has_scalar = self._update_active_scalar_array(scalar, assoc)
+
+            if not has_scalar:
+                rebuild_actor = rebuild_actor or (self._active_scalar_name is not None)
+                scalar = None
+                assoc = None
+                self._active_scalar_range = None
 
             if rebuild_actor:
                 self._rebuild_mesh_actor(scalar, assoc, reset_cam=reset_cam)

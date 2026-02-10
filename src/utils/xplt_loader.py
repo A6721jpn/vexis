@@ -35,6 +35,8 @@ class WaffleironLoader:
         self._n_points = 0
         self._n_cells = 0
         self._step_cache = {}  # step_idx -> {"point": {name: np.ndarray}, "cell": {name: np.ndarray}}
+        self._conn_point_ids = np.array([], dtype=np.int64)
+        self._conn_cell_ids = np.array([], dtype=np.int64)
         self._load()
 
     def _load(self):
@@ -52,6 +54,24 @@ class WaffleironLoader:
         self.w_mesh, self.element_map = self.xplt_data.mesh()
         self._n_points = len(self.w_mesh.nodes)
         self._n_cells = len(self.w_mesh.elements)
+        self._build_connectivity_index()
+
+    def _build_connectivity_index(self):
+        """Build flattened (point_id, cell_id) connectivity for fast cell->point averaging."""
+        point_chunks = []
+        cell_chunks = []
+        for cell_id, el in enumerate(self.w_mesh.elements):
+            node_ids = np.asarray(el.ids, dtype=np.int64)
+            if node_ids.size == 0:
+                continue
+            point_chunks.append(node_ids)
+            cell_chunks.append(np.full(node_ids.shape, cell_id, dtype=np.int64))
+        if point_chunks:
+            self._conn_point_ids = np.concatenate(point_chunks)
+            self._conn_cell_ids = np.concatenate(cell_chunks)
+        else:
+            self._conn_point_ids = np.array([], dtype=np.int64)
+            self._conn_cell_ids = np.array([], dtype=np.int64)
 
     def get_mesh(self) -> pv.UnstructuredGrid:
         """
@@ -177,6 +197,42 @@ class WaffleironLoader:
                 self._build_step_cache(idx)
             if progress_callback and (idx == 0 or (idx + 1) % 5 == 0 or idx == total - 1):
                 progress_callback(f"Caching step data... ({idx + 1}/{total})")
+
+    def domain_scalar_to_point(self, cell_scalar):
+        """
+        Average 1D domain scalar values to point values using mesh connectivity.
+
+        Parameters
+        ----------
+        cell_scalar : array-like
+            1D array with length == n_cells.
+        """
+        arr = np.asarray(cell_scalar, dtype=float).reshape(-1)
+        if arr.shape[0] != self._n_cells:
+            raise ValueError(
+                f"domain_scalar_to_point expects n_cells={self._n_cells}, got {arr.shape[0]}"
+            )
+        if self._conn_point_ids.size == 0:
+            return np.full(self._n_points, np.nan, dtype=float)
+
+        sums = np.zeros(self._n_points, dtype=float)
+        counts = np.zeros(self._n_points, dtype=np.int32)
+
+        valid_cell = np.isfinite(arr)
+        valid_link = valid_cell[self._conn_cell_ids]
+
+        pids = self._conn_point_ids[valid_link]
+        cids = self._conn_cell_ids[valid_link]
+        vals = arr[cids]
+
+        if vals.size > 0:
+            np.add.at(sums, pids, vals)
+            np.add.at(counts, pids, 1)
+
+        out = np.full(self._n_points, np.nan, dtype=float)
+        nonzero = counts > 0
+        out[nonzero] = sums[nonzero] / counts[nonzero]
+        return out
 
     def load_step_result(self, grid: pv.UnstructuredGrid, step_idx: int):
         """
