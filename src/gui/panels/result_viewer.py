@@ -39,12 +39,73 @@ class XpltLoaderThread(QThread):
         try:
             self.progress.emit("Reading file...")
             loader = WaffleironLoader(self.xplt_path)
-            if loader.get_time_steps():
-                self.progress.emit("Caching step data...")
-                loader.preload_steps(progress_callback=self.progress.emit)
             self.finished.emit(loader, "")
         except Exception as e:
             self.finished.emit(None, str(e))
+
+
+class ScalarRangeThread(QThread):
+    """Background thread for computing global scalar range across all steps."""
+
+    finished = Signal(str, str, object)  # scalar_name, assoc, (min,max)|None
+
+    def __init__(self, loader, n_steps, scalar_name, assoc):
+        super().__init__()
+        self.loader = loader
+        self.n_steps = n_steps
+        self.scalar_name = scalar_name
+        self.assoc = assoc
+
+    @staticmethod
+    def _to_scalar_magnitude(values):
+        arr = np.asarray(values, dtype=float)
+        if arr.ndim == 1:
+            return arr
+        if arr.shape[0] == 0:
+            return np.asarray([], dtype=float)
+        flat = arr.reshape(arr.shape[0], -1)
+        with np.errstate(all="ignore"):
+            return np.linalg.norm(flat, axis=1)
+
+    def run(self):
+        gmin = np.inf
+        gmax = -np.inf
+        found = False
+
+        for step_idx in range(self.n_steps):
+            cached = self.loader.get_cached_step(step_idx)
+            if self.assoc == "point":
+                raw = cached["point"].get(self.scalar_name)
+                if raw is None:
+                    continue
+                point_values = self._to_scalar_magnitude(raw)
+            else:
+                raw = cached["cell"].get(self.scalar_name)
+                if raw is None:
+                    continue
+                cell_values = self._to_scalar_magnitude(raw)
+                point_values = self.loader.domain_scalar_to_point(cell_values)
+
+            finite = np.asarray(point_values, dtype=float).reshape(-1)
+            finite = finite[np.isfinite(finite)]
+            if finite.size == 0:
+                continue
+
+            local_min = float(np.min(finite))
+            local_max = float(np.max(finite))
+            if local_min < gmin:
+                gmin = local_min
+            if local_max > gmax:
+                gmax = local_max
+            found = True
+
+        if not found:
+            rng = None
+        else:
+            if gmax <= gmin:
+                gmax = gmin + 1e-12
+            rng = (gmin, gmax)
+        self.finished.emit(self.scalar_name, self.assoc, rng)
 
 
 class ResultViewer(QWidget):
@@ -76,6 +137,9 @@ class ResultViewer(QWidget):
         self._active_scalar_assoc = None  # "point" | "cell" | None
         self._active_scalar_range = None
         self._global_scalar_ranges = {}
+        self.range_thread = None
+        self._range_running_key = None
+        self._range_pending_key = None
         self._is_slider_dragging = False
         self._is_updating_display = False
         self._pending_step_idx = None
@@ -261,6 +325,7 @@ class ResultViewer(QWidget):
             self.loading_overlay.raise_()
 
     def _reset_display_state(self):
+        self._stop_range_thread()
         self.base_points = None
         self.render_mesh = None
         self.mesh_actor = None
@@ -271,6 +336,8 @@ class ResultViewer(QWidget):
         self._active_scalar_assoc = None
         self._active_scalar_range = None
         self._global_scalar_ranges = {}
+        self._range_running_key = None
+        self._range_pending_key = None
         self._is_slider_dragging = False
         self._is_updating_display = False
         self._pending_step_idx = None
@@ -417,6 +484,19 @@ class ResultViewer(QWidget):
             self.load_thread.terminate()
             self.load_thread.wait()
             return True
+        return False
+
+    def _stop_range_thread(self):
+        if self.range_thread and self.range_thread.isRunning():
+            self.range_thread.terminate()
+            self.range_thread.wait()
+            self.range_thread = None
+            self._range_running_key = None
+            self._range_pending_key = None
+            return True
+        self.range_thread = None
+        self._range_running_key = None
+        self._range_pending_key = None
         return False
 
     def _on_load_finished(self, loader, error_msg):
@@ -657,52 +737,54 @@ class ResultViewer(QWidget):
             vmax = vmin + 1e-12
         return (vmin, vmax)
 
-    def _get_global_scalar_range(self, scalar, assoc):
-        """Return (min, max) over all completed steps for the selected display scalar."""
+    def _request_global_scalar_range(self, scalar, assoc):
+        """Start asynchronous global range computation for selected scalar."""
+        if not scalar or not assoc or not self.loader or not self.steps:
+            return
         key = (scalar, assoc)
         if key in self._global_scalar_ranges:
-            return self._global_scalar_ranges[key]
+            return
 
-        gmin = np.inf
-        gmax = -np.inf
-        found = False
+        if self.range_thread and self.range_thread.isRunning():
+            if self._range_running_key == key:
+                return
+            self._range_pending_key = key
+            return
 
-        for step_idx in range(len(self.steps)):
-            cached = self.loader.get_cached_step(step_idx)
-            if assoc == "point":
-                raw = cached["point"].get(scalar)
-                if raw is None:
-                    continue
-                point_values = self._to_scalar_magnitude(raw)
-            else:
-                raw = cached["cell"].get(scalar)
-                if raw is None:
-                    continue
-                cell_values = self._to_scalar_magnitude(raw)
-                point_values = self.loader.domain_scalar_to_point(cell_values)
+        self._range_running_key = key
+        self._range_pending_key = None
+        self.range_thread = ScalarRangeThread(
+            self.loader,
+            len(self.steps),
+            scalar,
+            assoc,
+        )
+        self.range_thread.finished.connect(self._on_global_scalar_range_ready)
+        self.range_thread.start()
 
-            finite = np.asarray(point_values, dtype=float).reshape(-1)
-            finite = finite[np.isfinite(finite)]
-            if finite.size == 0:
-                continue
-
-            local_min = float(np.min(finite))
-            local_max = float(np.max(finite))
-            if local_min < gmin:
-                gmin = local_min
-            if local_max > gmax:
-                gmax = local_max
-            found = True
-
-        if not found:
-            rng = None
-        else:
-            if gmax <= gmin:
-                gmax = gmin + 1e-12
-            rng = (gmin, gmax)
-
+    def _on_global_scalar_range_ready(self, scalar, assoc, rng):
+        key = (scalar, assoc)
         self._global_scalar_ranges[key] = rng
-        return rng
+        self._range_running_key = None
+        self.range_thread = None
+
+        if (
+            self._active_scalar_name == scalar
+            and self._active_scalar_assoc == assoc
+            and self.mesh_actor is not None
+            and rng is not None
+        ):
+            self._active_scalar_range = rng
+            try:
+                self.mesh_actor.mapper.scalar_range = rng
+                self.plotter.render()
+            except Exception:
+                pass
+
+        if self._range_pending_key and self._range_pending_key not in self._global_scalar_ranges:
+            next_key = self._range_pending_key
+            self._range_pending_key = None
+            self._request_global_scalar_range(next_key[0], next_key[1])
 
     def _update_active_scalar_array(self, scalar, assoc):
         if not scalar or not assoc:
@@ -720,9 +802,10 @@ class ResultViewer(QWidget):
 
         self.render_mesh.point_data["_active_scalar"] = point_values
         self.render_mesh.set_active_scalars("_active_scalar", preference="point")
-        self._active_scalar_range = self._get_global_scalar_range(scalar, assoc)
+        self._active_scalar_range = self._global_scalar_ranges.get((scalar, assoc))
         if self._active_scalar_range is None:
             self._active_scalar_range = self._finite_range(point_values)
+        self._request_global_scalar_range(scalar, assoc)
 
         if self.mesh_actor is not None and self._active_scalar_range is not None:
             try:
@@ -797,10 +880,20 @@ class ResultViewer(QWidget):
                 color=edge_color,
                 line_width=0.5,
                 render_points_as_spheres=False,
+                render_lines_as_tubes=False,
+                lighting=False,
+                pickable=False,
                 name="result_edges",
                 reset_camera=False,
                 render=False,
             )
+            try:
+                self.edge_actor.prop.render_points_as_spheres = False
+                self.edge_actor.prop.point_size = 1
+                self.edge_actor.prop.lighting = False
+                self.edge_actor.GetProperty().SetVertexVisibility(0)
+            except Exception:
+                pass
 
     def _update_display(self, reset_cam=False, high_quality=True):
         """Update 3D display with current step and field."""
@@ -851,6 +944,7 @@ class ResultViewer(QWidget):
     def cleanup(self):
         """Cleanup resources."""
         self._stop_loading_thread()
+        self._stop_range_thread()
         self._render_timer.stop()
         try:
             self.plotter.close()

@@ -1,4 +1,5 @@
 import os
+import threading
 import numpy as np
 import pyvista as pv
 
@@ -51,6 +52,7 @@ class WaffleironLoader:
         self._n_points = 0
         self._n_cells = 0
         self._step_cache = {}  # step_idx -> {"point": {name: np.ndarray}, "cell": {name: np.ndarray}}
+        self._cache_lock = threading.Lock()
         self._conn_point_ids = np.array([], dtype=np.int64)
         self._conn_cell_ids = np.array([], dtype=np.int64)
         self._surface_edge_pairs = np.empty((0, 2), dtype=np.int64)
@@ -245,9 +247,21 @@ class WaffleironLoader:
                 if norm_arr is not None:
                     cell_data[var_name] = norm_arr
 
-        cached = {"point": point_data, "cell": cell_data}
-        self._step_cache[step_idx] = cached
-        return cached
+        return {"point": point_data, "cell": cell_data}
+
+    def _get_or_build_step_cache(self, step_idx: int):
+        with self._cache_lock:
+            cached = self._step_cache.get(step_idx)
+        if cached is not None:
+            return cached
+
+        built = self._build_step_cache(step_idx)
+        with self._cache_lock:
+            cached = self._step_cache.get(step_idx)
+            if cached is None:
+                self._step_cache[step_idx] = built
+                return built
+            return cached
 
     def preload_steps(self, progress_callback=None):
         """Build cache for all steps. Intended to run in a background thread."""
@@ -255,17 +269,13 @@ class WaffleironLoader:
         if total == 0:
             return
         for idx in range(total):
-            if idx not in self._step_cache:
-                self._build_step_cache(idx)
+            self._get_or_build_step_cache(idx)
             if progress_callback and (idx == 0 or (idx + 1) % 5 == 0 or idx == total - 1):
                 progress_callback(f"Caching step data... ({idx + 1}/{total})")
 
     def get_cached_step(self, step_idx: int):
         """Return cached step data, building it on demand."""
-        cached = self._step_cache.get(step_idx)
-        if cached is None:
-            cached = self._build_step_cache(step_idx)
-        return cached
+        return self._get_or_build_step_cache(step_idx)
 
     def get_surface_edge_lines(self):
         """
@@ -326,9 +336,7 @@ class WaffleironLoader:
         if step_idx < 0 or step_idx >= len(self.xplt_data.step_blocks):
             return
 
-        cached = self._step_cache.get(step_idx)
-        if cached is None:
-            cached = self._build_step_cache(step_idx)
+        cached = self._get_or_build_step_cache(step_idx)
 
         for name, arr in cached["point"].items():
             grid.point_data[name] = arr
