@@ -1,0 +1,32 @@
+# Experimental robust meshing config (prototype)
+
+mesh:
+  revolve_axis: 2
+  revolve_angle: 90
+  revolve_layers: 14
+  mesh_size: 0.32
+  mesh_dimension: 2
+  output_format: "inp"
+
+  ogrid_core_ratio: 0.12
+  core_inner_ratio: 0.55
+  core_radial_layers: 3
+  radial_mapping_beta: 1.0
+
+mesh_robust:
+  enabled: true
+
+  # OCC healing before split/meshing
+  occ_heal: true
+  occ_heal_tolerance: 1.0e-7
+  occ_fix_degenerated: true
+  occ_fix_small_edges: true
+  occ_fix_small_faces: true
+  occ_sew_faces: true
+
+  # Ring meshing mode (single path; multi-stage fallback disabled)
+  strategies:
+    - structured_blossom
+
+  # Early accept threshold
+  singular_warning_target: 0

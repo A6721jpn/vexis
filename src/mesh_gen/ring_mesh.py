@@ -1,8 +1,61 @@
 from __future__ import annotations
 import numpy as np
 import gmsh
+import re
 from typing import Tuple, Sequence, List, Optional, Dict
 from .geometry import AxisInfo
+
+
+_SINGULAR_DETAIL_RE = re.compile(
+    r"Face\s+(\d+),\s+singular node\s+(\d+),\s+failed to assign to irregular vertex",
+    flags=re.IGNORECASE,
+)
+
+
+def _emit_singular_face_report(log_lines: Sequence[str], axes: AxisInfo) -> None:
+    face_hits: Dict[int, int] = {}
+    node_hits: Dict[tuple[int, int], int] = {}
+
+    for line in log_lines:
+        m = _SINGULAR_DETAIL_RE.search(line)
+        if not m:
+            continue
+        face_id = int(m.group(1))
+        node_id = int(m.group(2))
+        face_hits[face_id] = face_hits.get(face_id, 0) + 1
+        key = (face_id, node_id)
+        node_hits[key] = node_hits.get(key, 0) + 1
+
+    if not face_hits:
+        return
+
+    print(
+        "[mesh-singular] total_hits=%d unique_faces=%d unique_face_nodes=%d"
+        % (sum(face_hits.values()), len(face_hits), len(node_hits))
+    )
+
+    rd = axes.radial_dim
+    ad = axes.axial_dim
+    for face_id, hits in sorted(face_hits.items(), key=lambda kv: (-kv[1], kv[0])):
+        try:
+            bb = gmsh.model.getBoundingBox(2, face_id)
+            r0, a0 = bb[rd], bb[ad]
+            r1, a1 = bb[rd + 3], bb[ad + 3]
+            print(
+                "[mesh-singular] face=%d hits=%d radial=[%.6g, %.6g] axial=[%.6g, %.6g]"
+                % (face_id, hits, r0, r1, a0, a1)
+            )
+        except Exception:
+            print(
+                "[mesh-singular] face=%d hits=%d radial=[n/a, n/a] axial=[n/a, n/a]"
+                % (face_id, hits)
+            )
+
+    for (face_id, node_id), hits in sorted(node_hits.items(), key=lambda kv: (-kv[1], kv[0][0], kv[0][1])):
+        print(
+            "[mesh-singular-node] face=%d node=%d hits=%d"
+            % (face_id, node_id, hits)
+        )
 
 def mesh_outer_ring_quads(mesh_size: float, outer_surfaces: Sequence[int], axes: AxisInfo) -> Tuple[np.ndarray, np.ndarray]:
     """Generate a quad mesh on outer surfaces and return (points3d, quads)."""
@@ -97,7 +150,26 @@ def mesh_outer_ring_quads(mesh_size: float, outer_surfaces: Sequence[int], axes:
     pg = gmsh.model.addPhysicalGroup(2, list(outer_surfaces))
     gmsh.model.setPhysicalName(2, pg, "OuterRing")
 
+    logger_started = False
+    try:
+        gmsh.logger.start()
+        logger_started = True
+    except Exception:
+        logger_started = False
+
     gmsh.model.mesh.generate(2)
+
+    if logger_started:
+        try:
+            log_lines = list(gmsh.logger.get())
+        except Exception:
+            log_lines = []
+        finally:
+            try:
+                gmsh.logger.stop()
+            except Exception:
+                pass
+        _emit_singular_face_report(log_lines, axes)
 
     node_tags, node_coords, _ = gmsh.model.mesh.getNodes()
     node_tags = np.asarray(node_tags, dtype=np.int64)
