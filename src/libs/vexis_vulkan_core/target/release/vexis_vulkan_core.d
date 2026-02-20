@@ -1,0 +1,1 @@
+C:\github_repo\vexis\worktrees\vexis-rust-vulkan\src\libs\vexis_vulkan_core\target\release\vexis_vulkan_core.dll: C:\github_repo\vexis\worktrees\vexis-rust-vulkan\src\libs\vexis_vulkan_core\src\lib.rs C:\github_repo\vexis\worktrees\vexis-rust-vulkan\src\libs\vexis_vulkan_core\src\parser.rs C:\github_repo\vexis\worktrees\vexis-rust-vulkan\src\libs\vexis_vulkan_core\src\renderer.rs
