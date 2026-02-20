@@ -14,6 +14,8 @@ try:
     
     print(f"Parser returned: {parser.get_num_nodes()} nodes, {parser.get_num_elements()} elements")
     print(f"Parser found: {parser.get_num_steps()} steps")
+    # parser.dump_structure() # Debug
+    
     print(f"Node Vars: {parser.get_node_vars()}")
     print(f"Domain Vars: {parser.get_domain_vars()}")
     print(f"[Timer] Rust Mmap & Basic Scan: {(t1 - t0) * 1000.0:.3f} ms")
@@ -29,13 +31,17 @@ try:
         print(f"Extracted Step 0 Strain size: {len(strain)} items")
         print(f"[Timer] Extracting Step 0 variables: {(t3 - t2) * 1000.0:.3f} ms")
         
-        t4 = time.time()
-        coords = parser.get_base_coordinates()
-        elems = parser.get_domain_elements(0)
-        t5 = time.time()
-        print(f"Extracted Base Coordinates size: {len(coords)} nodes")
-        print(f"Extracted Domain 0 Elements list size: {len(elems)} ints")
-        print(f"[Timer] Extracting Mesh Geometry: {(t5 - t4) * 1000.0:.3f} ms")
+        try:
+            t4 = time.time()
+            coords = parser.get_base_coordinates()
+            elems = parser.get_domain_elements(0)
+            t5 = time.time()
+            print(f"Extracted Base Coordinates size: {len(coords)} nodes")
+            print(f"Extracted Domain 0 Elements list size: {len(elems)} ints")
+            print(f"[Timer] Extracting Mesh Geometry: {(t5 - t4) * 1000.0:.3f} ms")
+        except Exception as e:
+            print(f"Mesh Extraction Failed: {e}")
+            parser.dump_structure()
 
     # Test Renderer
     renderer = vexis_vulkan_core.VulkanRenderer(800, 600)

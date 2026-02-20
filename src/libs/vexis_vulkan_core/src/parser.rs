@@ -1,12 +1,10 @@
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
-use numpy::{PyArray1, PyArray2};
 use std::fs::File;
 use std::path::Path;
-use memmap2::MmapOptions;
+use memmap2::{Mmap, MmapOptions};
 use std::sync::Arc;
 use byteorder::{ByteOrder, LittleEndian, BigEndian};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Endianness {
@@ -74,76 +72,66 @@ impl XpltFastParser {
         
         let root_blocks = Self::parse_blocks(&mmap, 4, mmap.len(), endian, 0);
         
-        let mut num_nodes = 0;
+        // Metadata extraction: try 0x01010002 (Header) then 0x01041101 (Node Header -> size)
+        let num_nodes = if let Some(n_block) = Self::find_block(&root_blocks, 0x01010002) {
+            Self::read_u32(&mmap, n_block.offset, endian) as usize
+        } else if let Some(n_block) = Self::find_block(&root_blocks, 0x01041101) {
+            Self::read_u32(&mmap, n_block.offset, endian) as usize
+        } else {
+            0
+        };
+
         let mut num_elements = 0;
+        let mut domains = Vec::new();
+        Self::find_blocks(&root_blocks, 0x01042100, &mut domains); // Find all Domain blocks
+        for domain in &domains {
+            if let Some(e_block) = Self::find_block(&domain.children, 0x01032104) {
+                num_elements += Self::read_u32(&mmap, e_block.offset, endian) as usize;
+            }
+        }
+
         let mut node_vars = Vec::new();
         let mut domain_vars = Vec::new();
         let mut step_offsets = Vec::new();
 
-        for b in &root_blocks {
-            if b.tag == 0x01000000 { // Root
-                for c in &b.children {
-                    if c.tag == 0x01010000 { // Header
-                        for h in &c.children {
-                            if h.tag == 0x01010002 { // Nodes
-                                num_nodes = Self::read_u32(&mmap, h.offset, endian) as usize;
-                            }
-                        }
-                    }
-                    if c.tag == 0x01020000 { // Dictionary
-                        for dict_section in &c.children {
-                            let is_node = dict_section.tag == 0x01023000;
-                            let is_domain = dict_section.tag == 0x01024000;
-                            if is_node || is_domain {
-                                for (idx, item) in dict_section.children.iter().enumerate() {
-                                    if item.tag == 0x01020001 { // Dictionary item
-                                        let mut name = String::new();
-                                        let mut type_id = 0;
-                                        let mut format_id = 0;
-                                        for prop in &item.children {
-                                            if prop.tag == 0x01020002 { type_id = Self::read_u32(&mmap, prop.offset, endian); }
-                                            if prop.tag == 0x01020003 { format_id = Self::read_u32(&mmap, prop.offset, endian); }
-                                            if prop.tag == 0x01020004 { 
-                                                // Read null-terminated string
-                                                let mut end = prop.offset;
-                                                while end < prop.offset + prop.size && mmap[end] != 0 {
-                                                    end += 1;
-                                                }
-                                                name = String::from_utf8_lossy(&mmap[prop.offset..end]).into_owned();
-                                            }
-                                        }
-                                        if is_node {
-                                            node_vars.push(VarInfo{name, type_id, format_id, index: idx + 1}); // FEBio dict ids are 1-based
-                                        } else {
-                                            domain_vars.push(VarInfo{name, type_id, format_id, index: idx + 1});
-                                        }
+        // Dictionary extraction
+        if let Some(dict_block) = Self::find_block(&root_blocks, 0x01020000) {
+            for dict_section in &dict_block.children {
+                let is_node = dict_section.tag == 0x01023000;
+                let is_domain = dict_section.tag == 0x01024000;
+                if is_node || is_domain {
+                    let mut var_id_counter = 1;
+                    for item in &dict_section.children {
+                        if item.tag == 0x01020001 { // Dictionary item
+                            let mut name = String::new();
+                            let mut type_id = 0;
+                            let mut format_id = 0;
+                            for prop in &item.children {
+                                if prop.tag == 0x01020002 { type_id = Self::read_u32(&mmap, prop.offset, endian); }
+                                if prop.tag == 0x01020003 { format_id = Self::read_u32(&mmap, prop.offset, endian); }
+                                if prop.tag == 0x01020004 { 
+                                    let mut end = prop.offset;
+                                    while end < prop.offset + prop.size && mmap[end] != 0 {
+                                        end += 1;
                                     }
+                                    name = String::from_utf8_lossy(&mmap[prop.offset..end]).into_owned();
                                 }
                             }
-                        }
-                    }
-                    if c.tag == 0x01040000 { // Mesh
-                        for mesh_section in &c.children {
-                            if mesh_section.tag == 0x01042000 { // Domains
-                                for domain in &mesh_section.children {
-                                    if domain.tag == 0x01042100 { // Domain
-                                        for dprop in &domain.children {
-                                            if dprop.tag == 0x01042101 { // Domain Header
-                                                for dhprop in &dprop.children {
-                                                    if dhprop.tag == 0x01032104 { // elements size
-                                                        num_elements += Self::read_u32(&mmap, dhprop.offset, endian) as usize;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                            if is_node {
+                                node_vars.push(VarInfo{name, type_id, format_id, index: var_id_counter});
+                            } else {
+                                domain_vars.push(VarInfo{name, type_id, format_id, index: var_id_counter});
                             }
+                            var_id_counter += 1;
                         }
                     }
                 }
-            } else if b.tag == 0x02000000 { // State
-                step_offsets.push(b.offset - 8); // Store offset to the tag itself
+            }
+        }
+
+        for b in &root_blocks {
+            if b.tag == 0x02000000 { // State
+                step_offsets.push(b.offset - 8);
             }
         }
 
@@ -368,36 +356,47 @@ impl XpltFastParser {
         }
     }
 
+    // Extract base node coordinates (0x01041001 -> array of VEC3F)
     pub fn get_base_coordinates<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyAny>> {
         let root_blocks = Self::parse_blocks(&self.mmap, 4, self.mmap.len(), self.endian, 0);
         
-        if let Some(coords_block) = Self::find_block(&root_blocks, 0x01041100) {
-            let offset = coords_block.offset;
-            let size = coords_block.size;
+        // Search for 0x01041001 (Node coords v1.0) or 0x01041200 (Node coords v2.0)
+        let coords_block = if let Some(b) = Self::find_block(&root_blocks, 0x01041001) {
+            Some(b)
+        } else if let Some(b) = Self::find_block(&root_blocks, 0x01041200) {
+            Some(b)
+        } else {
+            None
+        };
+
+        if let Some(block) = coords_block {
+            let offset = block.offset;
+            let size = block.size;
             
-            let num_floats = size / 4;
-            let mut coords = Vec::with_capacity(num_floats);
-            for i in 0..num_floats {
-                if offset + i * 4 + 4 <= offset + size {
+            // XPLT 1.0: simple array of f32 (num_nodes * 3)
+            // XPLT 2.0: mixed int id + 3x f32 (num_nodes * 16 bytes)
+            let (is_v2, item_size) = if block.tag == 0x01041200 { (true, 16) } else { (false, 12) };
+
+            let num_items = size / item_size;
+            let mut nested = Vec::with_capacity(num_items);
+            
+            for i in 0..num_items {
+                let start = offset + i * item_size + (if is_v2 { 4 } else { 0 });
+                let mut chunk = Vec::with_capacity(3);
+                for j in 0..3 {
+                    let poff = start + j * 4;
                     let f = match self.endian {
-                        Endianness::Little => LittleEndian::read_f32(&self.mmap[offset + i * 4 .. offset + i * 4 + 4]),
-                        Endianness::Big => BigEndian::read_f32(&self.mmap[offset + i * 4 .. offset + i * 4 + 4]),
+                        Endianness::Little => LittleEndian::read_f32(&self.mmap[poff .. poff + 4]),
+                        Endianness::Big => BigEndian::read_f32(&self.mmap[poff .. poff + 4]),
                     };
-                    coords.push(f);
+                    chunk.push(f);
                 }
-            }
-            
-            let num_nodes = coords.len() / 3;
-            let mut nested = Vec::with_capacity(num_nodes);
-            for i in 0..num_nodes {
-                let chunk = &coords[i * 3 .. (i+1) * 3];
-                let py_chunk = pyo3::types::PyList::new_bound(py, chunk.iter());
-                nested.push(py_chunk);
+                nested.push(pyo3::types::PyList::new_bound(py, chunk.iter()));
             }
             let py_array = pyo3::types::PyList::new_bound(py, nested.iter());
             Ok(py_array.into_any())
         } else {
-            Err(PyValueError::new_err("Base node coordinates block (0x01041100) not found"))
+            Err(PyValueError::new_err("Node coordinates block (0x01041001/0x01041200) not found"))
         }
     }
 
@@ -413,26 +412,29 @@ impl XpltFastParser {
         }
 
         let domain = domains[domain_idx];
-        if let Some(list_block) = Self::find_block(&domain.children, 0x01042102) { // Element List
-            let offset = list_block.offset;
-            let size = list_block.size;
-            
+        // Element items are 0x01042201 inside element list (0x01042200)
+        let mut element_blocks = Vec::new();
+        Self::find_blocks(&domain.children, 0x01042201, &mut element_blocks);
+
+        let mut all_ints = Vec::new();
+        for eb in &element_blocks {
+            let offset = eb.offset;
+            let size = eb.size;
             let num_ints = size / 4;
-            let mut ints = Vec::with_capacity(num_ints);
             for i in 0..num_ints {
-                if offset + i * 4 + 4 <= offset + size {
-                    let v = match self.endian {
-                        Endianness::Little => LittleEndian::read_u32(&self.mmap[offset + i * 4 .. offset + i * 4 + 4]),
-                        Endianness::Big => BigEndian::read_u32(&self.mmap[offset + i * 4 .. offset + i * 4 + 4]),
-                    };
-                    ints.push(v);
-                }
+                let v = match self.endian {
+                    Endianness::Little => LittleEndian::read_u32(&self.mmap[offset + i * 4 .. offset + i * 4 + 4]),
+                    Endianness::Big => BigEndian::read_u32(&self.mmap[offset + i * 4 .. offset + i * 4 + 4]),
+                };
+                all_ints.push(v);
             }
-            
-            let py_array = pyo3::types::PyList::new_bound(py, ints.iter());
+        }
+        
+        if !all_ints.is_empty() {
+            let py_array = pyo3::types::PyList::new_bound(py, all_ints.iter());
             Ok(py_array.into_any())
         } else {
-            Err(PyValueError::new_err("Elements list (0x01042102) not found in domain"))
+            Err(PyValueError::new_err("Elements (0x01042201) not found in domain"))
         }
     }
 }
@@ -471,31 +473,10 @@ impl XpltFastParser {
 
     fn is_branch(tag: u32) -> bool {
         let branch_tags = [
-            0x01000000, // Root
-            0x01010000, // Header
-            0x01020000, // Dictionary
-            0x01021000, // ... types
-            0x01022000, 
-            0x01023000, // Node vars
-            0x01024000, // Domain vars
-            0x01025000, // Surface vars
-            0x01020001, // Dictionary item
-            0x01030000, // Materials
-            0x01030001, // Material
-            0x01040000, // Mesh
-            0x01041000, // Nodes
-            0x01042000, // Domains
-            0x01042100, // Domain
-            0x01042101, // Domain Header
-            0x02000000, // State
-            0x02010000, // State Header
-            0x02020000, // State Data
-            0x02020100,
-            0x02020200,
-            0x02020300, // Node Data
-            0x02020400, // Domain Data
-            0x02020500, // Surface Data
-            0x02020001, // State Variable
+            0x01000000, 0x01010000, 0x01020000, 0x01021000, 0x01022000, 0x01023000, 0x01024000, 0x01025000, 0x01020001,
+            0x01030000, 0x01030001, 0x01040000, 0x01041000, 0x01041100, 0x01042000, 0x01042100, 0x01042101, 0x01042200,
+            0x01043000, 0x01043100, 0x01043101, 0x01043200, 0x01044000, 0x01044100, 0x01045000, 0x01045100, 0x01050000,
+            0x02000000, 0x02010000, 0x02020000, 0x02020300, 0x02020400, 0x02020001
         ];
         branch_tags.contains(&tag)
     }
