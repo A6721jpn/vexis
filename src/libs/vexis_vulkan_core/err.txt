@@ -1,0 +1,15 @@
+    Checking vexis_vulkan_core v0.1.0 (C:\github_repo\vexis\worktrees\vexis-rust-vulkan\src\libs\vexis_vulkan_core)
+error[E0599]: no method named `layout` found for struct `Arc<GraphicsPipeline>` in the current scope
+   --> src\renderer.rs:389:43
+    |
+389 |             .push_constants(self.pipeline.layout().clone(), 0, push_constants)
+    |                                           ^^^^^^ private field, not a method
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Pipeline` which provides `layout` is implemented but not in scope; perhaps you want to import it
+    |
+  1 + use vulkano::pipeline::Pipeline;
+    |
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `vexis_vulkan_core` (lib) due to 1 previous error

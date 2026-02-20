@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
 use std::fs::File;
 use std::path::Path;
-use memmap2::{Mmap, MmapOptions};
+use memmap2::MmapOptions;
 use std::sync::Arc;
 use byteorder::{ByteOrder, LittleEndian, BigEndian};
 
