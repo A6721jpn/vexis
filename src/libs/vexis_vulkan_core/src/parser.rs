@@ -259,6 +259,129 @@ impl XpltFastParser {
         }
     }
 
+    // Extract a node variable, compute magnitude if it's a vector, and return along with min and max.
+    pub fn get_node_scalars(&self, step_idx: usize, var_name: &str) -> PyResult<(Vec<f32>, f32, f32)> {
+        if step_idx >= self.step_offsets.len() {
+            return Err(PyValueError::new_err("Invalid step index"));
+        }
+        let var_info = self.node_vars.iter().find(|v| v.name == var_name);
+        if var_info.is_none() {
+            return Err(PyValueError::new_err(format!("Node variable '{}' not found", var_name)));
+        }
+        let var_id = var_info.unwrap().index as u32;
+        let item_type = var_info.unwrap().type_id;
+
+        let offset = self.step_offsets[step_idx];
+        let state_blocks = Self::parse_blocks(&self.mmap, offset, self.mmap.len(), self.endian, 0);
+        
+        let mut raw_data = None;
+        for b in &state_blocks {
+            if b.tag == 0x02000000 { 
+                for c in &b.children {
+                    if c.tag == 0x02020000 { 
+                        for sd in &c.children {
+                            if sd.tag == 0x02020300 { 
+                                for sv in &sd.children {
+                                    if sv.tag == 0x02020001 { 
+                                        let mut this_var_id = 0;
+                                        let mut this_data = None;
+                                        for p in &sv.children {
+                                            if p.tag == 0x02020002 { this_var_id = Self::read_u32(&self.mmap, p.offset, self.endian); }
+                                            if p.tag == 0x02020003 { this_data = Some(p); }
+                                        }
+                                        if this_var_id == var_id {
+                                            raw_data = this_data.cloned();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(data_block) = raw_data {
+            let comp_count = match item_type {
+                0 => 1,
+                1 => 3,
+                2 => 6,
+                _ => 1,
+            };
+            
+            let mut ptr = data_block.offset;
+            let end = data_block.offset + data_block.size;
+            
+            let mut values_flat = Vec::with_capacity(self.num_nodes);
+            let mut cmin = f32::INFINITY;
+            let mut cmax = f32::NEG_INFINITY;
+            
+            while ptr + 8 <= end {
+                let _region_id = Self::read_u32(&self.mmap, ptr, self.endian);
+                let size = Self::read_u32(&self.mmap, ptr + 4, self.endian) as usize;
+                ptr += 8;
+                if ptr + size > end { break; }
+                
+                let num_floats = size / 4;
+                if comp_count == 3 {
+                    // Vector: calculate magnitude
+                    let nodes_in_region = num_floats / 3;
+                    for i in 0..nodes_in_region {
+                        if ptr + i * 12 + 12 <= end {
+                            let x = match self.endian {
+                                Endianness::Little => LittleEndian::read_f32(&self.mmap[ptr + i * 12 .. ptr + i * 12 + 4]),
+                                Endianness::Big => BigEndian::read_f32(&self.mmap[ptr + i * 12 .. ptr + i * 12 + 4]),
+                            };
+                            let y = match self.endian {
+                                Endianness::Little => LittleEndian::read_f32(&self.mmap[ptr + i * 12 + 4 .. ptr + i * 12 + 8]),
+                                Endianness::Big => BigEndian::read_f32(&self.mmap[ptr + i * 12 + 4 .. ptr + i * 12 + 8]),
+                            };
+                            let z = match self.endian {
+                                Endianness::Little => LittleEndian::read_f32(&self.mmap[ptr + i * 12 + 8 .. ptr + i * 12 + 12]),
+                                Endianness::Big => BigEndian::read_f32(&self.mmap[ptr + i * 12 + 8 .. ptr + i * 12 + 12]),
+                            };
+                            let mag = (x*x + y*y + z*z).sqrt();
+                            values_flat.push(mag);
+                            if !mag.is_nan() {
+                                if mag < cmin { cmin = mag; }
+                                if mag > cmax { cmax = mag; }
+                            }
+                        }
+                    }
+                } else {
+                    // Scalar or other: take the first component as representation (e.g. von Mises could be computed separately if we know stress format)
+                    let items_in_region = num_floats / comp_count;
+                    for i in 0..items_in_region {
+                        if ptr + i * 4 * comp_count + 4 <= end {
+                            let f = match self.endian {
+                                Endianness::Little => LittleEndian::read_f32(&self.mmap[ptr + i * 4 * comp_count .. ptr + i * 4 * comp_count + 4]),
+                                Endianness::Big => BigEndian::read_f32(&self.mmap[ptr + i * 4 * comp_count .. ptr + i * 4 * comp_count + 4]),
+                            };
+                            values_flat.push(f);
+                            if !f.is_nan() {
+                                if f < cmin { cmin = f; }
+                                if f > cmax { cmax = f; }
+                            }
+                        }
+                    }
+                }
+                ptr += size;
+            }
+            
+            if cmin.is_infinite() || cmax.is_infinite() {
+                cmin = 0.0;
+                cmax = 1.0;
+            } else if cmax <= cmin {
+                cmax = cmin + 1e-12;
+            }
+            Ok((values_flat, cmin, cmax))
+            
+        } else {
+            Err(PyValueError::new_err("Data not found for variable in this step"))
+        }
+    }
+
     // Extract a domain variable as a float array. 
     pub fn get_domain_data<'py>(&self, py: Python<'py>, step_idx: usize, var_name: &str) -> PyResult<Bound<'py, pyo3::types::PyAny>> {
         if step_idx >= self.step_offsets.len() {

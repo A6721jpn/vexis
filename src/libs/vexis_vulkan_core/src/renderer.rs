@@ -18,15 +18,16 @@ use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::rasterization::RasterizationState;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
+use vulkano::pipeline::graphics::depth_stencil::{DepthState, DepthStencilState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineShaderStageCreateInfo, layout::PipelineLayoutCreateInfo};
 use vulkano::shader::ShaderModule;
 use vulkano::pipeline::graphics::vertex_input::{
     Vertex as VulkanoVertex, VertexInputState, VertexInputBindingDescription,
-    VertexInputRate, VertexInputAttributeDescription,
+    VertexInputRate, VertexInputAttributeDescription
 };
 use vulkano::pipeline::layout::PushConstantRange;
 use vulkano::shader::ShaderStages;
+use vulkano::buffer::Subbuffer;
 
 use std::sync::Arc;
 use bytemuck::{Pod, Zeroable};
@@ -41,9 +42,14 @@ pub struct PushConstants {
 
 #[derive(VulkanoVertex, Clone, Copy, Debug, Default, Pod, Zeroable)]
 #[repr(C)]
-pub struct Vertex {
+pub struct PositionVertex {
     #[format(R32G32B32_SFLOAT)]
     pub position: [f32; 3],
+}
+
+#[derive(VulkanoVertex, Clone, Copy, Debug, Default, Pod, Zeroable)]
+#[repr(C)]
+pub struct ScalarVertex {
     #[format(R32_SFLOAT)]
     pub scalar: f32,
 }
@@ -78,6 +84,14 @@ pub struct VulkanRenderer {
     command_buffer_allocator: StandardCommandBufferAllocator,
     render_pass: Arc<RenderPass>,
     pipeline: Arc<GraphicsPipeline>,
+    
+    // Cached resources
+    color_image: Option<Arc<Image>>,
+    depth_image: Option<Arc<Image>>,
+    framebuffer: Option<Arc<Framebuffer>>,
+    positions_buffer: Option<Subbuffer<[crate::renderer::PositionVertex]>>,
+    indices_buffer: Option<Subbuffer<[u32]>>,
+    num_indices: u32,
 }
 
 #[pymethods]
@@ -120,7 +134,7 @@ impl VulkanRenderer {
             },
         ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create device: {}", e)))?;
 
-        let queue = queues.next().unwrap();
+        let queue = queues.next().ok_or_else(|| PyErr::new::<PyRuntimeError, _>("Failed to get queue"))?;
         let allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
@@ -190,8 +204,8 @@ impl VulkanRenderer {
         let vs_module = unsafe { ShaderModule::new(device.clone(), vulkano::shader::ShaderModuleCreateInfo::new(&vs_spv)) }.map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("VS creation error: {:?}", e)))?;
         let fs_module = unsafe { ShaderModule::new(device.clone(), vulkano::shader::ShaderModuleCreateInfo::new(&fs_spv)) }.map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("FS creation error: {:?}", e)))?;
 
-        let vs_entry = vs_module.entry_point("main").unwrap();
-        let fs_entry = fs_module.entry_point("main").unwrap();
+        let vs_entry = vs_module.entry_point("main").ok_or_else(|| PyErr::new::<PyRuntimeError, _>("Failed to find VS entry point"))?;
+        let fs_entry = fs_module.entry_point("main").ok_or_else(|| PyErr::new::<PyRuntimeError, _>("Failed to find FS entry point"))?;
 
         let pipeline_layout = vulkano::pipeline::layout::PipelineLayout::new(
             device.clone(),
@@ -204,6 +218,9 @@ impl VulkanRenderer {
                 ..Default::default()
             }
         ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create pipeline layout: {}", e)))?;
+
+        let subpass = Subpass::from(render_pass.clone(), 0)
+            .ok_or_else(|| PyErr::new::<PyRuntimeError, _>("Failed to get subpass"))?;
 
         let pipeline = GraphicsPipeline::new(
             device.clone(),
@@ -218,7 +235,14 @@ impl VulkanRenderer {
                         .binding(
                             0,
                             VertexInputBindingDescription {
-                                stride: std::mem::size_of::<Vertex>() as u32,
+                                stride: std::mem::size_of::<crate::renderer::PositionVertex>() as u32,
+                                input_rate: VertexInputRate::Vertex,
+                            },
+                        )
+                        .binding(
+                            1,
+                            VertexInputBindingDescription {
+                                stride: std::mem::size_of::<crate::renderer::ScalarVertex>() as u32,
                                 input_rate: VertexInputRate::Vertex,
                             },
                         )
@@ -233,9 +257,9 @@ impl VulkanRenderer {
                         .attribute(
                             1,
                             VertexInputAttributeDescription {
-                                binding: 0,
+                                binding: 1,
                                 format: Format::R32_SFLOAT,
-                                offset: 12,
+                                offset: 0,
                             },
                         )
                 ),
@@ -250,17 +274,20 @@ impl VulkanRenderer {
                 }),
                 rasterization_state: Some(RasterizationState::default()),
                 multisample_state: Some(MultisampleState::default()),
-                depth_stencil_state: Some(DepthStencilState::simple_depth_test()),
+                depth_stencil_state: Some(DepthStencilState {
+                    depth: Some(DepthState::simple()),
+                    ..Default::default()
+                }),
                 color_blend_state: Some(ColorBlendState::with_attachment_states(
                     1, // Known to be 1 color attachment
                     ColorBlendAttachmentState::default(),
                 )),
-                subpass: Some(Subpass::from(render_pass.clone(), 0).unwrap().into()),
+                subpass: Some(subpass.into()),
                 ..GraphicsPipelineCreateInfo::layout(pipeline_layout)
             },
         ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create pipeline: {}", e)))?;
 
-        Ok(VulkanRenderer { 
+        let mut renderer = VulkanRenderer { 
             width, 
             height, 
             instance, 
@@ -269,65 +296,27 @@ impl VulkanRenderer {
             allocator,
             command_buffer_allocator,
             render_pass,
-            pipeline
-        })
+            pipeline,
+            color_image: None,
+            depth_image: None,
+            framebuffer: None,
+            positions_buffer: None,
+            indices_buffer: None,
+            num_indices: 0,
+        };
+        
+        let _ = renderer.resize(width, height);
+        
+        Ok(renderer)
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
+    pub fn resize(&mut self, width: u32, height: u32) -> PyResult<()> {
         self.width = width;
         self.height = height;
-    }
-
-    #[pyo3(signature = (positions, values, indices, mvp_matrix, min_val, max_val))]
-    pub fn render_mesh(
-        &mut self,
-        positions: Vec<f32>,
-        values: Vec<f32>,
-        indices: Vec<u32>,
-        mvp_matrix: [[f32; 4]; 4],
-        min_val: f32,
-        max_val: f32,
-    ) -> PyResult<Vec<u8>> {
-        let num_vertices = positions.len() / 3;
-        if values.len() != num_vertices {
-            return Err(PyErr::new::<PyRuntimeError, _>("Mismatched positions and values lengths"));
+        
+        if width == 0 || height == 0 {
+            return Ok(());
         }
-
-        let mut vertices = Vec::with_capacity(num_vertices);
-        for i in 0..num_vertices {
-            vertices.push(Vertex {
-                position: [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]],
-                scalar: values[i],
-            });
-        }
-
-        let vertex_buffer = Buffer::from_iter(
-            self.allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            vertices,
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create vertex buffer: {}", e)))?;
-
-        let index_buffer = Buffer::from_iter(
-            self.allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::INDEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            indices.clone(),
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create index buffer: {}", e)))?;
-
-        let num_indices = indices.len() as u32;
 
         let image = Image::new(
             self.allocator.clone(),
@@ -373,6 +362,99 @@ impl VulkanRenderer {
             },
         ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create framebuffer: {}", e)))?;
 
+        self.color_image = Some(image);
+        self.depth_image = Some(depth_buffer);
+        self.framebuffer = Some(framebuffer);
+
+        Ok(())
+    }
+
+    #[pyo3(signature = (positions, indices))]
+    pub fn set_mesh(&mut self, positions: Vec<f32>, indices: Vec<u32>) -> PyResult<()> {
+        if positions.is_empty() || indices.is_empty() {
+            self.positions_buffer = None;
+            self.indices_buffer = None;
+            self.num_indices = 0;
+            return Ok(());
+        }
+
+        let num_vertices = positions.len() / 3;
+        let mut vertices = Vec::with_capacity(num_vertices);
+        for i in 0..num_vertices {
+            vertices.push(crate::renderer::PositionVertex {
+                position: [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]],
+            });
+        }
+
+        let vertex_buffer = Buffer::from_iter(
+            self.allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            vertices,
+        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create vertex buffer: {}", e)))?;
+
+        let index_buffer = Buffer::from_iter(
+            self.allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::INDEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            indices.clone(),
+        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create index buffer: {}", e)))?;
+
+        self.positions_buffer = Some(vertex_buffer);
+        self.indices_buffer = Some(index_buffer);
+        self.num_indices = indices.len() as u32;
+
+        Ok(())
+    }
+
+    #[pyo3(signature = (values, mvp_matrix, min_val, max_val))]
+    pub fn render_mesh(
+        &mut self,
+        values: Vec<f32>,
+        mvp_matrix: [[f32; 4]; 4],
+        min_val: f32,
+        max_val: f32,
+    ) -> PyResult<Vec<u8>> {
+        if self.framebuffer.is_none() || self.positions_buffer.is_none() || self.indices_buffer.is_none() || self.color_image.is_none() {
+            return Ok(vec![0; (self.width * self.height * 4) as usize]);
+        }
+        if values.is_empty() {
+            return Ok(vec![0; (self.width * self.height * 4) as usize]);
+        }
+
+        let num_vertices = values.len();
+        let mut scalar_vertices = Vec::with_capacity(num_vertices);
+        for i in 0..num_vertices {
+            scalar_vertices.push(crate::renderer::ScalarVertex {
+                scalar: values[i],
+            });
+        }
+
+        let scalar_buffer = Buffer::from_iter(
+            self.allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            scalar_vertices,
+        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create scalar buffer: {}", e)))?;
+
         let buf = Buffer::from_iter(
             self.allocator.clone(),
             BufferCreateInfo {
@@ -384,7 +466,7 @@ impl VulkanRenderer {
                 ..Default::default()
             },
             (0..self.width * self.height * 4).map(|_| 0u8),
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create buffer: {}", e)))?;
+        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create transfer buffer: {}", e)))?;
 
         let mut builder = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
@@ -398,11 +480,16 @@ impl VulkanRenderer {
             max_val,
         };
 
+        let pos_buf = self.positions_buffer.as_ref().unwrap().clone();
+        let idx_buf = self.indices_buffer.as_ref().unwrap().clone();
+        let fb = self.framebuffer.as_ref().unwrap().clone();
+        let img = self.color_image.as_ref().unwrap().clone();
+
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some([0.1, 0.2, 0.3, 1.0].into()), Some(1f32.into())],
-                    ..RenderPassBeginInfo::framebuffer(framebuffer)
+                    clear_values: vec![Some([0.059, 0.059, 0.102, 1.0].into()), Some(1f32.into())],
+                    ..RenderPassBeginInfo::framebuffer(fb)
                 },
                 SubpassBeginInfo {
                     contents: SubpassContents::Inline,
@@ -414,17 +501,19 @@ impl VulkanRenderer {
             .unwrap()
             .push_constants(self.pipeline.layout().clone(), 0, push_constants)
             .unwrap()
-            .bind_vertex_buffers(0, vertex_buffer.clone())
+            .bind_vertex_buffers(0, pos_buf)
             .unwrap()
-            .bind_index_buffer(index_buffer.clone())
+            .bind_vertex_buffers(1, scalar_buffer)
             .unwrap()
-            .draw_indexed(num_indices, 1, 0, 0, 0)
+            .bind_index_buffer(idx_buf)
+            .unwrap()
+            .draw_indexed(self.num_indices, 1, 0, 0, 0)
             .unwrap();
         
         builder
             .end_render_pass(Default::default())
             .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to end render pass: {}", e)))?
-            .copy_image_to_buffer(vulkano::command_buffer::CopyImageToBufferInfo::image_buffer(image, buf.clone()))
+            .copy_image_to_buffer(vulkano::command_buffer::CopyImageToBufferInfo::image_buffer(img, buf.clone()))
             .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to copy image to buffer: {}", e)))?;
 
         let command_buffer = builder.build().map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to build command buffer: {}", e)))?;
@@ -493,9 +582,9 @@ impl VulkanRenderer {
         ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create command buffer: {}", e)))?;
 
         // Create a dummy triangle
-        let vertex1 = Vertex { position: [-0.5, -0.5, 0.0], scalar: 0.0 };
-        let vertex2 = Vertex { position: [ 0.5, -0.5, 0.0], scalar: 0.5 };
-        let vertex3 = Vertex { position: [ 0.0,  0.5, 0.0], scalar: 1.0 };
+        let vertex1 = crate::renderer::PositionVertex { position: [-0.5, -0.5, 0.0] };
+        let vertex2 = crate::renderer::PositionVertex { position: [ 0.5, -0.5, 0.0] };
+        let vertex3 = crate::renderer::PositionVertex { position: [ 0.0,  0.5, 0.0] };
         let vertex_buffer = Buffer::from_iter(
             self.allocator.clone(),
             BufferCreateInfo {
@@ -503,11 +592,27 @@ impl VulkanRenderer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             vec![vertex1, vertex2, vertex3],
         ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create vertex buffer: {}", e)))?;
+
+        let scalar1 = crate::renderer::ScalarVertex { scalar: 0.0 };
+        let scalar2 = crate::renderer::ScalarVertex { scalar: 0.5 };
+        let scalar3 = crate::renderer::ScalarVertex { scalar: 1.0 };
+        let scalar_buffer = Buffer::from_iter(
+            self.allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            vec![scalar1, scalar2, scalar3],
+        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create scalar buffer: {}", e)))?;
 
         let buf = Buffer::from_iter(
             self.allocator.clone(),
@@ -537,6 +642,8 @@ impl VulkanRenderer {
             .bind_pipeline_graphics(self.pipeline.clone())
             .unwrap()
             .bind_vertex_buffers(0, vertex_buffer.clone())
+            .unwrap()
+            .bind_vertex_buffers(1, scalar_buffer.clone())
             .unwrap()
             .draw(3, 1, 0, 0)
             .unwrap();
