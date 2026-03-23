@@ -1,36 +1,43 @@
-use pyo3::prelude::*;
-use pyo3::exceptions::PyRuntimeError;
-use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
-use vulkano::device::{Device, DeviceCreateInfo, QueueCreateInfo, DeviceExtensions, Queue};
-use vulkano::memory::allocator::{StandardMemoryAllocator, AllocationCreateInfo, MemoryTypeFilter};
-use vulkano::VulkanLibrary;
-use vulkano::format::Format;
-use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage, view::ImageView};
-use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
-use vulkano::render_pass::{RenderPass, Framebuffer, FramebufferCreateInfo, Subpass};
-use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassBeginInfo, SubpassContents};
-use vulkano::sync::{self, GpuFuture};
+#![allow(clippy::useless_conversion)]
 
-use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
+use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
+use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassBeginInfo,
+    SubpassContents,
+};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo};
+use vulkano::format::Format;
+use vulkano::image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage};
+use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
+use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
+use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
+use vulkano::sync::{self, GpuFuture};
+use vulkano::VulkanLibrary;
+
+use vulkano::buffer::Subbuffer;
 use vulkano::pipeline::graphics::color_blend::{ColorBlendAttachmentState, ColorBlendState};
+use vulkano::pipeline::graphics::depth_stencil::{DepthState, DepthStencilState};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::rasterization::RasterizationState;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::graphics::depth_stencil::{DepthState, DepthStencilState};
-use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineShaderStageCreateInfo, layout::PipelineLayoutCreateInfo};
-use vulkano::shader::ShaderModule;
 use vulkano::pipeline::graphics::vertex_input::{
-    Vertex as VulkanoVertex, VertexInputState, VertexInputBindingDescription,
-    VertexInputRate, VertexInputAttributeDescription
+    Vertex as VulkanoVertex, VertexInputAttributeDescription, VertexInputBindingDescription,
+    VertexInputRate, VertexInputState,
 };
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
 use vulkano::pipeline::layout::PushConstantRange;
+use vulkano::pipeline::{
+    layout::PipelineLayoutCreateInfo, GraphicsPipeline, Pipeline, PipelineShaderStageCreateInfo,
+};
+use vulkano::shader::ShaderModule;
 use vulkano::shader::ShaderStages;
-use vulkano::buffer::Subbuffer;
 
-use std::sync::Arc;
 use bytemuck::{Pod, Zeroable};
+use std::sync::Arc;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
@@ -54,22 +61,36 @@ pub struct ScalarVertex {
     pub scalar: f32,
 }
 
-fn compile_shader(src: &str, stage: naga::ShaderStage, _entry_point: &str) -> Result<Vec<u32>, String> {
+fn compile_shader(
+    src: &str,
+    stage: naga::ShaderStage,
+    _entry_point: &str,
+) -> Result<Vec<u32>, String> {
     let mut frontend = naga::front::glsl::Frontend::default();
     let options = naga::front::glsl::Options {
         stage,
         defines: naga::FastHashMap::default(),
     };
-    let module = frontend.parse(&options, src).map_err(|e| format!("GLSL parse error: {:?}", e))?;
-    let mut validator = naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all());
-    let info = validator.validate(&module).map_err(|e| format!("Validation error: {:?}", e))?;
+    let module = frontend
+        .parse(&options, src)
+        .map_err(|e| format!("GLSL parse error: {:?}", e))?;
+    let mut validator = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::all(),
+    );
+    let info = validator
+        .validate(&module)
+        .map_err(|e| format!("Validation error: {:?}", e))?;
     let spv_options = naga::back::spv::Options {
         flags: naga::back::spv::WriterFlags::DEBUG,
         ..Default::default()
     };
-    let mut writer = naga::back::spv::Writer::new(&spv_options).map_err(|e| format!("SPV writer error: {:?}", e))?;
+    let mut writer = naga::back::spv::Writer::new(&spv_options)
+        .map_err(|e| format!("SPV writer error: {:?}", e))?;
     let mut spv = Vec::new();
-    writer.write(&module, &info, None, &None, &mut spv).map_err(|e| format!("SPV write error: {:?}", e))?;
+    writer
+        .write(&module, &info, None, &None, &mut spv)
+        .map_err(|e| format!("SPV write error: {:?}", e))?;
     Ok(spv)
 }
 
@@ -77,14 +98,14 @@ fn compile_shader(src: &str, stage: naga::ShaderStage, _entry_point: &str) -> Re
 pub struct VulkanRenderer {
     width: u32,
     height: u32,
-    instance: Arc<Instance>,
+    _instance: Arc<Instance>,
     device: Arc<Device>,
     queue: Arc<Queue>,
     allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: StandardCommandBufferAllocator,
     render_pass: Arc<RenderPass>,
     pipeline: Arc<GraphicsPipeline>,
-    
+
     // Cached resources
     color_image: Option<Arc<Image>>,
     depth_image: Option<Arc<Image>>,
@@ -98,29 +119,47 @@ pub struct VulkanRenderer {
 impl VulkanRenderer {
     #[new]
     pub fn new(width: u32, height: u32) -> PyResult<Self> {
-        let library = VulkanLibrary::new()
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to load Vulkan library: {}", e)))?;
-        
-        let instance = Instance::new(library, InstanceCreateInfo {
-            enabled_extensions: InstanceExtensions::empty(), 
-            ..Default::default()
-        }).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create Vulkan instance: {}", e)))?;
+        let library = VulkanLibrary::new().map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to load Vulkan library: {}", e))
+        })?;
+
+        let instance = Instance::new(
+            library,
+            InstanceCreateInfo {
+                enabled_extensions: InstanceExtensions::empty(),
+                ..Default::default()
+            },
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create Vulkan instance: {}", e))
+        })?;
 
         let device_extensions = DeviceExtensions {
             khr_storage_buffer_storage_class: true,
             ..DeviceExtensions::empty()
         };
 
-        let physical_device = instance.enumerate_physical_devices()
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to enumerate physical devices: {}", e)))?
+        let physical_device = instance
+            .enumerate_physical_devices()
+            .map_err(|e| {
+                PyErr::new::<PyRuntimeError, _>(format!(
+                    "Failed to enumerate physical devices: {}",
+                    e
+                ))
+            })?
             .next()
             .ok_or_else(|| PyErr::new::<PyRuntimeError, _>("No physical devices found"))?;
 
-        let queue_family_index = physical_device.queue_family_properties()
+        let queue_family_index = physical_device
+            .queue_family_properties()
             .iter()
             .enumerate()
-            .position(|(_, q)| q.queue_flags.intersects(vulkano::device::QueueFlags::GRAPHICS))
-            .ok_or_else(|| PyErr::new::<PyRuntimeError, _>("No graphics queue family found"))? as u32;
+            .position(|(_, q)| {
+                q.queue_flags
+                    .intersects(vulkano::device::QueueFlags::GRAPHICS)
+            })
+            .ok_or_else(|| PyErr::new::<PyRuntimeError, _>("No graphics queue family found"))?
+            as u32;
 
         let (device, mut queues) = Device::new(
             physical_device,
@@ -132,11 +171,15 @@ impl VulkanRenderer {
                 enabled_extensions: device_extensions,
                 ..Default::default()
             },
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create device: {}", e)))?;
+        )
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create device: {}", e)))?;
 
-        let queue = queues.next().ok_or_else(|| PyErr::new::<PyRuntimeError, _>("Failed to get queue"))?;
+        let queue = queues
+            .next()
+            .ok_or_else(|| PyErr::new::<PyRuntimeError, _>("Failed to get queue"))?;
         let allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
+        let command_buffer_allocator =
+            StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
         let render_pass = vulkano::single_pass_renderpass!(
             device.clone(),
@@ -158,7 +201,10 @@ impl VulkanRenderer {
                 color: [color],
                 depth_stencil: {depth}
             }
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create render pass: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create render pass: {}", e))
+        })?;
 
         // Compile shaders
         let vs_src = r"
@@ -198,14 +244,32 @@ impl VulkanRenderer {
             }
         ";
 
-        let vs_spv = compile_shader(vs_src, naga::ShaderStage::Vertex, "main").map_err(|e| PyErr::new::<PyRuntimeError, _>(e))?;
-        let fs_spv = compile_shader(fs_src, naga::ShaderStage::Fragment, "main").map_err(|e| PyErr::new::<PyRuntimeError, _>(e))?;
+        let vs_spv = compile_shader(vs_src, naga::ShaderStage::Vertex, "main")
+            .map_err(PyRuntimeError::new_err)?;
+        let fs_spv = compile_shader(fs_src, naga::ShaderStage::Fragment, "main")
+            .map_err(PyRuntimeError::new_err)?;
 
-        let vs_module = unsafe { ShaderModule::new(device.clone(), vulkano::shader::ShaderModuleCreateInfo::new(&vs_spv)) }.map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("VS creation error: {:?}", e)))?;
-        let fs_module = unsafe { ShaderModule::new(device.clone(), vulkano::shader::ShaderModuleCreateInfo::new(&fs_spv)) }.map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("FS creation error: {:?}", e)))?;
+        let vs_module = unsafe {
+            ShaderModule::new(
+                device.clone(),
+                vulkano::shader::ShaderModuleCreateInfo::new(&vs_spv),
+            )
+        }
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("VS creation error: {:?}", e)))?;
+        let fs_module = unsafe {
+            ShaderModule::new(
+                device.clone(),
+                vulkano::shader::ShaderModuleCreateInfo::new(&fs_spv),
+            )
+        }
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("FS creation error: {:?}", e)))?;
 
-        let vs_entry = vs_module.entry_point("main").ok_or_else(|| PyErr::new::<PyRuntimeError, _>("Failed to find VS entry point"))?;
-        let fs_entry = fs_module.entry_point("main").ok_or_else(|| PyErr::new::<PyRuntimeError, _>("Failed to find FS entry point"))?;
+        let vs_entry = vs_module
+            .entry_point("main")
+            .ok_or_else(|| PyErr::new::<PyRuntimeError, _>("Failed to find VS entry point"))?;
+        let fs_entry = fs_module
+            .entry_point("main")
+            .ok_or_else(|| PyErr::new::<PyRuntimeError, _>("Failed to find FS entry point"))?;
 
         let pipeline_layout = vulkano::pipeline::layout::PipelineLayout::new(
             device.clone(),
@@ -216,8 +280,11 @@ impl VulkanRenderer {
                     size: std::mem::size_of::<PushConstants>() as u32,
                 }],
                 ..Default::default()
-            }
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create pipeline layout: {}", e)))?;
+            },
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create pipeline layout: {}", e))
+        })?;
 
         let subpass = Subpass::from(render_pass.clone(), 0)
             .ok_or_else(|| PyErr::new::<PyRuntimeError, _>("Failed to get subpass"))?;
@@ -229,13 +296,15 @@ impl VulkanRenderer {
                 stages: vec![
                     PipelineShaderStageCreateInfo::new(vs_entry.clone()),
                     PipelineShaderStageCreateInfo::new(fs_entry),
-                ].into(),
+                ]
+                .into(),
                 vertex_input_state: Some(
                     VertexInputState::new()
                         .binding(
                             0,
                             VertexInputBindingDescription {
-                                stride: std::mem::size_of::<crate::renderer::PositionVertex>() as u32,
+                                stride: std::mem::size_of::<crate::renderer::PositionVertex>()
+                                    as u32,
                                 input_rate: VertexInputRate::Vertex,
                             },
                         )
@@ -261,7 +330,7 @@ impl VulkanRenderer {
                                 format: Format::R32_SFLOAT,
                                 offset: 0,
                             },
-                        )
+                        ),
                 ),
                 input_assembly_state: Some(InputAssemblyState::default()),
                 viewport_state: Some(ViewportState {
@@ -269,7 +338,8 @@ impl VulkanRenderer {
                         offset: [0.0, 0.0],
                         extent: [width as f32, height as f32],
                         depth_range: 0.0..=1.0,
-                    }].into(),
+                    }]
+                    .into(),
                     ..Default::default()
                 }),
                 rasterization_state: Some(RasterizationState::default()),
@@ -285,14 +355,17 @@ impl VulkanRenderer {
                 subpass: Some(subpass.into()),
                 ..GraphicsPipelineCreateInfo::layout(pipeline_layout)
             },
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create pipeline: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create pipeline: {}", e))
+        })?;
 
-        let mut renderer = VulkanRenderer { 
-            width, 
-            height, 
-            instance, 
-            device, 
-            queue, 
+        let mut renderer = VulkanRenderer {
+            width,
+            height,
+            _instance: instance,
+            device,
+            queue,
             allocator,
             command_buffer_allocator,
             render_pass,
@@ -304,16 +377,16 @@ impl VulkanRenderer {
             indices_buffer: None,
             num_indices: 0,
         };
-        
+
         let _ = renderer.resize(width, height);
-        
+
         Ok(renderer)
     }
 
     pub fn resize(&mut self, width: u32, height: u32) -> PyResult<()> {
         self.width = width;
         self.height = height;
-        
+
         if width == 0 || height == 0 {
             return Ok(());
         }
@@ -331,10 +404,12 @@ impl VulkanRenderer {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create image: {}", e)))?;
+        )
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create image: {}", e)))?;
 
-        let view = ImageView::new_default(image.clone())
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create image view: {}", e)))?;
+        let view = ImageView::new_default(image.clone()).map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create image view: {}", e))
+        })?;
 
         let depth_buffer = Image::new(
             self.allocator.clone(),
@@ -349,10 +424,14 @@ impl VulkanRenderer {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create depth buffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create depth buffer: {}", e))
+        })?;
 
-        let depth_view = ImageView::new_default(depth_buffer.clone())
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create depth buffer view: {}", e)))?;
+        let depth_view = ImageView::new_default(depth_buffer.clone()).map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create depth buffer view: {}", e))
+        })?;
 
         let framebuffer = Framebuffer::new(
             self.render_pass.clone(),
@@ -360,7 +439,10 @@ impl VulkanRenderer {
                 attachments: vec![view, depth_view],
                 ..Default::default()
             },
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create framebuffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create framebuffer: {}", e))
+        })?;
 
         self.color_image = Some(image);
         self.depth_image = Some(depth_buffer);
@@ -393,11 +475,15 @@ impl VulkanRenderer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             vertices,
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create vertex buffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create vertex buffer: {}", e))
+        })?;
 
         let index_buffer = Buffer::from_iter(
             self.allocator.clone(),
@@ -406,11 +492,15 @@ impl VulkanRenderer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             indices.clone(),
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create index buffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create index buffer: {}", e))
+        })?;
 
         self.positions_buffer = Some(vertex_buffer);
         self.indices_buffer = Some(index_buffer);
@@ -427,20 +517,21 @@ impl VulkanRenderer {
         min_val: f32,
         max_val: f32,
     ) -> PyResult<Vec<u8>> {
-        if self.framebuffer.is_none() || self.positions_buffer.is_none() || self.indices_buffer.is_none() || self.color_image.is_none() {
+        if self.framebuffer.is_none()
+            || self.positions_buffer.is_none()
+            || self.indices_buffer.is_none()
+            || self.color_image.is_none()
+        {
             return Ok(vec![0; (self.width * self.height * 4) as usize]);
         }
         if values.is_empty() {
             return Ok(vec![0; (self.width * self.height * 4) as usize]);
         }
 
-        let num_vertices = values.len();
-        let mut scalar_vertices = Vec::with_capacity(num_vertices);
-        for i in 0..num_vertices {
-            scalar_vertices.push(crate::renderer::ScalarVertex {
-                scalar: values[i],
-            });
-        }
+        let scalar_vertices: Vec<_> = values
+            .into_iter()
+            .map(|scalar| crate::renderer::ScalarVertex { scalar })
+            .collect();
 
         let scalar_buffer = Buffer::from_iter(
             self.allocator.clone(),
@@ -449,11 +540,15 @@ impl VulkanRenderer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             scalar_vertices,
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create scalar buffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create scalar buffer: {}", e))
+        })?;
 
         let buf = Buffer::from_iter(
             self.allocator.clone(),
@@ -462,17 +557,27 @@ impl VulkanRenderer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_RANDOM_ACCESS,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
             },
             (0..self.width * self.height * 4).map(|_| 0u8),
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create transfer buffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create transfer buffer: {}", e))
+        })?;
 
         let mut builder = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
             self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create command buffer builder: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!(
+                "Failed to create command buffer builder: {}",
+                e
+            ))
+        })?;
 
         let push_constants = PushConstants {
             mvp: mvp_matrix,
@@ -496,7 +601,9 @@ impl VulkanRenderer {
                     ..Default::default()
                 },
             )
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to begin render pass: {}", e)))?
+            .map_err(|e| {
+                PyErr::new::<PyRuntimeError, _>(format!("Failed to begin render pass: {}", e))
+            })?
             .bind_pipeline_graphics(self.pipeline.clone())
             .unwrap()
             .push_constants(self.pipeline.layout().clone(), 0, push_constants)
@@ -509,24 +616,40 @@ impl VulkanRenderer {
             .unwrap()
             .draw_indexed(self.num_indices, 1, 0, 0, 0)
             .unwrap();
-        
+
         builder
             .end_render_pass(Default::default())
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to end render pass: {}", e)))?
-            .copy_image_to_buffer(vulkano::command_buffer::CopyImageToBufferInfo::image_buffer(img, buf.clone()))
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to copy image to buffer: {}", e)))?;
+            .map_err(|e| {
+                PyErr::new::<PyRuntimeError, _>(format!("Failed to end render pass: {}", e))
+            })?
+            .copy_image_to_buffer(
+                vulkano::command_buffer::CopyImageToBufferInfo::image_buffer(img, buf.clone()),
+            )
+            .map_err(|e| {
+                PyErr::new::<PyRuntimeError, _>(format!("Failed to copy image to buffer: {}", e))
+            })?;
 
-        let command_buffer = builder.build().map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to build command buffer: {}", e)))?;
+        let command_buffer = builder.build().map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to build command buffer: {}", e))
+        })?;
 
         let future = sync::now(self.device.clone())
             .then_execute(self.queue.clone(), command_buffer)
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to execute command buffer: {}", e)))?
+            .map_err(|e| {
+                PyErr::new::<PyRuntimeError, _>(format!("Failed to execute command buffer: {}", e))
+            })?
             .then_signal_fence_and_flush()
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to flush future: {}", e)))?;
+            .map_err(|e| {
+                PyErr::new::<PyRuntimeError, _>(format!("Failed to flush future: {}", e))
+            })?;
 
-        future.wait(None).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to wait on future: {}", e)))?;
+        future.wait(None).map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to wait on future: {}", e))
+        })?;
 
-        let buffer_content = buf.read().map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to read buffer: {}", e)))?;
+        let buffer_content = buf.read().map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to read buffer: {}", e))
+        })?;
         Ok(buffer_content.to_vec())
     }
 
@@ -544,10 +667,12 @@ impl VulkanRenderer {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create image: {}", e)))?;
+        )
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create image: {}", e)))?;
 
-        let view = ImageView::new_default(image.clone())
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create image view: {}", e)))?;
+        let view = ImageView::new_default(image.clone()).map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create image view: {}", e))
+        })?;
 
         let depth_buffer = Image::new(
             self.allocator.clone(),
@@ -562,10 +687,14 @@ impl VulkanRenderer {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create depth buffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create depth buffer: {}", e))
+        })?;
 
-        let depth_view = ImageView::new_default(depth_buffer.clone())
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create depth buffer view: {}", e)))?;
+        let depth_view = ImageView::new_default(depth_buffer.clone()).map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create depth buffer view: {}", e))
+        })?;
 
         let framebuffer = Framebuffer::new(
             self.render_pass.clone(),
@@ -573,18 +702,30 @@ impl VulkanRenderer {
                 attachments: vec![view, depth_view],
                 ..Default::default()
             },
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create framebuffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create framebuffer: {}", e))
+        })?;
 
         let mut builder = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
             self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create command buffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create command buffer: {}", e))
+        })?;
 
         // Create a dummy triangle
-        let vertex1 = crate::renderer::PositionVertex { position: [-0.5, -0.5, 0.0] };
-        let vertex2 = crate::renderer::PositionVertex { position: [ 0.5, -0.5, 0.0] };
-        let vertex3 = crate::renderer::PositionVertex { position: [ 0.0,  0.5, 0.0] };
+        let vertex1 = crate::renderer::PositionVertex {
+            position: [-0.5, -0.5, 0.0],
+        };
+        let vertex2 = crate::renderer::PositionVertex {
+            position: [0.5, -0.5, 0.0],
+        };
+        let vertex3 = crate::renderer::PositionVertex {
+            position: [0.0, 0.5, 0.0],
+        };
         let vertex_buffer = Buffer::from_iter(
             self.allocator.clone(),
             BufferCreateInfo {
@@ -592,11 +733,15 @@ impl VulkanRenderer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             vec![vertex1, vertex2, vertex3],
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create vertex buffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create vertex buffer: {}", e))
+        })?;
 
         let scalar1 = crate::renderer::ScalarVertex { scalar: 0.0 };
         let scalar2 = crate::renderer::ScalarVertex { scalar: 0.5 };
@@ -608,11 +753,15 @@ impl VulkanRenderer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             vec![scalar1, scalar2, scalar3],
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create scalar buffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create scalar buffer: {}", e))
+        })?;
 
         let buf = Buffer::from_iter(
             self.allocator.clone(),
@@ -621,11 +770,15 @@ impl VulkanRenderer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_RANDOM_ACCESS,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
             },
             (0..self.width * self.height * 4).map(|_| 0u8),
-        ).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to create output buffer: {}", e)))?;
+        )
+        .map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to create output buffer: {}", e))
+        })?;
 
         builder
             .begin_render_pass(
@@ -638,7 +791,9 @@ impl VulkanRenderer {
                     ..Default::default()
                 },
             )
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to begin render pass: {}", e)))?
+            .map_err(|e| {
+                PyErr::new::<PyRuntimeError, _>(format!("Failed to begin render pass: {}", e))
+            })?
             .bind_pipeline_graphics(self.pipeline.clone())
             .unwrap()
             .bind_vertex_buffers(0, vertex_buffer.clone())
@@ -647,12 +802,18 @@ impl VulkanRenderer {
             .unwrap()
             .draw(3, 1, 0, 0)
             .unwrap();
-        
+
         builder
             .end_render_pass(Default::default())
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to end render pass: {}", e)))?
-            .copy_image_to_buffer(vulkano::command_buffer::CopyImageToBufferInfo::image_buffer(image, buf.clone()))
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to copy image to buffer: {}", e)))?;
+            .map_err(|e| {
+                PyErr::new::<PyRuntimeError, _>(format!("Failed to end render pass: {}", e))
+            })?
+            .copy_image_to_buffer(
+                vulkano::command_buffer::CopyImageToBufferInfo::image_buffer(image, buf.clone()),
+            )
+            .map_err(|e| {
+                PyErr::new::<PyRuntimeError, _>(format!("Failed to copy image to buffer: {}", e))
+            })?;
 
         let command_buffer = builder.build().unwrap();
 
@@ -664,7 +825,9 @@ impl VulkanRenderer {
 
         future.wait(None).unwrap();
 
-        let buffer_content = buf.read().map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to read buffer: {}", e)))?;
+        let buffer_content = buf.read().map_err(|e| {
+            PyErr::new::<PyRuntimeError, _>(format!("Failed to read buffer: {}", e))
+        })?;
         Ok(buffer_content.to_vec())
     }
 }
