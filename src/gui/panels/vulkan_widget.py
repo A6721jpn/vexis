@@ -3,7 +3,7 @@ import math
 import numpy as np
 from PySide6.QtCore import Qt, Signal, QPointF
 from PySide6.QtGui import QImage, QPixmap, QPainter
-from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QSizePolicy
 import vexis_vulkan_core
 
 class VulkanImageWidget(QWidget):
@@ -20,7 +20,9 @@ class VulkanImageWidget(QWidget):
         self.image_label = QLabel(self)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setStyleSheet("background-color: #0f0f1a;")
-        self.layout.addWidget(self.image_label)
+        self.image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.image_label.setMinimumSize(0, 0)
+        self.layout.addWidget(self.image_label, 1)
         
         # Renderer state
         self.renderer = None

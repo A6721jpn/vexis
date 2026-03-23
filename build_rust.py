@@ -5,10 +5,24 @@ import subprocess
 import argparse
 import time
 import stat
+import tempfile
+
+def copy_runtime_dir(src, dst, ignore=None, preserve_windows_runtime=False):
+    if preserve_windows_runtime and os.name == "nt":
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        cmd = ["cmd.exe", "/c", "robocopy", src, dst, "/E"]
+        if ignore is not None:
+            cmd.extend(["/XF", "out.txt"])
+        result = subprocess.run(cmd, check=False)
+        if result.returncode >= 8:
+            raise RuntimeError(f"robocopy failed for {src} -> {dst} with exit code {result.returncode}")
+        return
+
+    shutil.copytree(src, dst, ignore=ignore)
 
 def build():
     parser = argparse.ArgumentParser(description="Build automation for VEXIS-CAE EXE (with experimental Rust core)")
-    parser.add_argument("-o", "--output", help="Optional output directory for the distribution (outside repository)")
+    parser.add_argument("-o", "--output", help="Optional exact output directory for the distribution")
     parser.add_argument("-i", "--icon", help="Optional absolute path to an .ico file for the executable")
     args = parser.parse_args()
 
@@ -16,13 +30,12 @@ def build():
     SRC_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     project_name = "VEXIS-CAE-Rust"
-    
+
     if args.output:
-        dist_parent = os.path.abspath(args.output)
-        dist_dir = os.path.join(dist_parent, project_name)
+        dist_dir = os.path.abspath(args.output)
     else:
-        dist_parent = os.path.join(SRC_BASE_DIR, "dist")
-        dist_dir = os.path.join(dist_parent, project_name)
+        dist_dir = os.path.join(SRC_BASE_DIR, "dist", project_name)
+    dist_parent = os.path.dirname(dist_dir)
 
     print(f"--- Starting Build Process for {project_name} ---")
     print(f"  - Source: {SRC_BASE_DIR}")
@@ -62,6 +75,14 @@ def build():
         if args.icon:
             print(f"  - Icon (Auto-detected): {args.icon}")
 
+    # Keep PyInstaller scratch/output out of the worktree so the repository
+    # does not accumulate build debris.
+    temp_root = tempfile.mkdtemp(prefix="vexis_rust_build_")
+    pyinstaller_dist_parent = os.path.join(temp_root, "dist")
+    pyinstaller_work_path = os.path.join(temp_root, "build")
+    pyinstaller_bundle_dir = os.path.join(pyinstaller_dist_parent, project_name)
+    pyinstaller_spec_file = os.path.join(SRC_BASE_DIR, "VEXIS-CAE-Rust.spec")
+
     # Build the Rust module before packaging (just to be safe)
     print("Step 1: Building Rust module vexis_vulkan_core via maturin...")
     rust_dir = os.path.join(SRC_BASE_DIR, "src", "libs", "vexis_vulkan_core")
@@ -78,13 +99,26 @@ def build():
         print("Please ensure Rust is installed and you are in the correct Python environment.")
         sys.exit(1)
 
+    print("Step 1b: Verifying Rust module import...")
+    try:
+        subprocess.run(
+            [sys.executable, "-c", "import vexis_vulkan_core; print('vexis_vulkan_core import ok')"],
+            cwd=SRC_BASE_DIR,
+            env=env,
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Error: Rust module import verification failed with exit code {e.returncode}")
+        sys.exit(1)
+
     # 2. PyInstaller execution
     print("Step 2: Running PyInstaller...")
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
-        "--distpath", dist_parent,
-        "VEXIS-CAE-Rust.spec"
+        "--distpath", pyinstaller_dist_parent,
+        "--workpath", pyinstaller_work_path,
+        pyinstaller_spec_file,
     ]
     
     try:
@@ -95,26 +129,44 @@ def build():
 
     # 3. Configure distribution directory
     print("Step 3: Configuring distribution directory...")
-    
-    dirs_to_copy = ["solver", "input", "config", "doc",
-                    os.path.join("src", "icons"),
-                    os.path.join("src", "gui", "styles"),
-                    os.path.join("src", "libs"),
-                    os.path.join("src", "utils")]
 
-    dirs_to_create = ["results", "temp"]
-    files_to_copy = ["template2.feb"]
+    if not os.path.exists(pyinstaller_bundle_dir):
+        print(f"Error: PyInstaller output not found: {pyinstaller_bundle_dir}")
+        sys.exit(1)
 
-    for d in dirs_to_copy:
-        src = os.path.join(SRC_BASE_DIR, d)
-        dst = os.path.join(dist_dir, d)
-        if os.path.exists(src):
-            if os.path.exists(dst):
-                shutil.rmtree(dst)
-            shutil.copytree(src, dst)
-            print(f"  - Copied {d}/")
-        else:
-            print(f"  - Warning: Source directory {d} not found.")
+    os.makedirs(dist_parent, exist_ok=True)
+    shutil.copytree(pyinstaller_bundle_dir, dist_dir)
+    print(f"  - Copied PyInstaller bundle")
+
+    solver_dir = os.path.join(SRC_BASE_DIR, "solver")
+    if not os.path.exists(solver_dir):
+        fallback_solver_dir = os.path.abspath(os.path.join(SRC_BASE_DIR, "..", "..", "solver"))
+        if os.path.exists(fallback_solver_dir):
+            solver_dir = fallback_solver_dir
+
+    dirs_to_copy = [
+        (solver_dir, "solver", shutil.ignore_patterns("out.txt")),
+        (os.path.join(SRC_BASE_DIR, "config"), "config", None),
+        (os.path.join(SRC_BASE_DIR, "doc"), "doc", None),
+        (os.path.join(SRC_BASE_DIR, "src", "icons"), os.path.join("src", "icons"), None),
+        (os.path.join(SRC_BASE_DIR, "src", "gui", "styles"), os.path.join("src", "gui", "styles"), None),
+    ]
+
+    dirs_to_create = ["input", "results", "temp", "logs"]
+    files_to_copy = ["template2.feb", "README.md", "LICENSE"]
+
+    for src, rel_dst, ignore in dirs_to_copy:
+        dst = os.path.join(dist_dir, rel_dst)
+        if not os.path.exists(src):
+            print(f"  - Warning: Source directory {rel_dst} not found.")
+            continue
+        copy_runtime_dir(
+            src,
+            dst,
+            ignore=ignore,
+            preserve_windows_runtime=(rel_dst == "solver"),
+        )
+        print(f"  - Copied {rel_dst}/")
 
     for d in dirs_to_create:
         dst = os.path.join(dist_dir, d)
@@ -124,11 +176,11 @@ def build():
     for f in files_to_copy:
         src = os.path.join(SRC_BASE_DIR, f)
         dst = os.path.join(dist_dir, f)
-        if os.path.exists(src):
-            shutil.copy2(src, dst)
-            print(f"  - Copied {f}")
-        else:
+        if not os.path.exists(src):
             print(f"  - Warning: Source file {f} not found.")
+            continue
+        shutil.copy2(src, dst)
+        print(f"  - Copied {f}")
 
     print(f"\nBuild Completed successfully!")
     print(f"Distribution location: {dist_dir}")

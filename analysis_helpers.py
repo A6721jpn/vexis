@@ -18,6 +18,12 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DEFAULT_TEMPLATE = os.path.join(BASE_DIR, "template2.feb")
+SOLVER_STARTUP_FALLBACK_CODES = {
+    0xC0000022,  # STATUS_ACCESS_DENIED
+    0xC000007B,  # STATUS_INVALID_IMAGE_FORMAT
+    0xC0000135,  # STATUS_DLL_NOT_FOUND
+    0xC0000142,  # STATUS_DLL_INIT_FAILED
+}
 
 def get_solver_status():
     """
@@ -358,10 +364,16 @@ def run_solver_and_extract(feb_path, result_dir, log_path=None, num_threads=None
 
                     if last_error_code == 0:
                         break # Success!
-                    
-                    # If failed with DLL error, try next candidate
-                    if last_error_code == 3221225781: # 0xC0000135 = STATUS_DLL_NOT_FOUND
-                        f_global.write(f"!!! DLL NOT FOUND for {current_exe}. Trying next candidate... !!!\n")
+
+                    normalized_error = last_error_code & 0xFFFFFFFF
+
+                    # If the process failed before solver startup stabilized,
+                    # try the next configured candidate.
+                    if normalized_error in SOLVER_STARTUP_FALLBACK_CODES:
+                        f_global.write(
+                            f"!!! Solver startup failure 0x{normalized_error:08X} for {current_exe}. "
+                            "Trying next candidate... !!!\n"
+                        )
                         continue
                     
                     # Other errors
