@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QToolBar,
     QMessageBox,
 )
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QPixmap
 
 from src.gui.models.job_item import JobItem, JobStatus
@@ -65,6 +65,10 @@ class MainWindow(QMainWindow):
             self.input_dir, self.temp_dir, self.result_dir, self.config_path
         )
         self.file_watcher = InputFolderWatcher(self.input_dir)
+        self._list_refresh_timer = QTimer(self)
+        self._list_refresh_timer.setSingleShot(True)
+        self._list_refresh_timer.setInterval(50)
+        self._list_refresh_timer.timeout.connect(self._refresh_list_ui)
 
         self._setup_ui()
         self._setup_toolbar()
@@ -280,8 +284,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.gen_mesh_action)
 
     def _connect_signals(self):
-        self.file_watcher.file_added.connect(self.job_manager.add_job_from_path)
-        self.file_watcher.file_removed.connect(self.job_manager.remove_job_by_path)
+        self.file_watcher.files_changed.connect(self.job_manager.sync_input_files)
 
         self.job_manager.job_added.connect(self._on_job_added)
         self.job_manager.job_removed.connect(self._on_job_removed)
@@ -291,19 +294,21 @@ class MainWindow(QMainWindow):
         self.job_manager.batch_finished.connect(self.on_stop_clicked)
 
     def _init_existing_jobs(self):
-        for path in self.file_watcher.get_existing_files():
-            self.job_manager.add_job_from_path(path)
+        self.job_manager.sync_input_files(self.file_watcher.get_existing_files())
 
     @Slot(JobItem)
     def _on_job_added(self, job):
         self.jobs[job.id] = job
-        self._refresh_list_ui()
+        self._queue_list_refresh()
 
     @Slot(str)
     def _on_job_removed(self, job_id):
         if job_id in self.jobs:
             del self.jobs[job_id]
-            self._refresh_list_ui()
+            self._queue_list_refresh()
+
+    def _queue_list_refresh(self):
+        self._list_refresh_timer.start()
 
     @Slot(str, JobStatus)
     def _on_job_status_changed(self, job_id, status):
@@ -369,6 +374,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_list_ui(self):
         current_id = self._get_current_job_id()
+        self.job_list_widget.setUpdatesEnabled(False)
         self.job_list_widget.blockSignals(True)
         self.job_list_widget.clear()
 
@@ -389,6 +395,7 @@ class MainWindow(QMainWindow):
                 self.job_list_widget.setCurrentItem(list_item)
 
         self.job_list_widget.blockSignals(False)
+        self.job_list_widget.setUpdatesEnabled(True)
         self._update_batch_progress()
 
     def _get_current_job_id(self):

@@ -177,9 +177,14 @@ class JobManager(QObject):
         self.result_dir = result_dir
         self.config_path = config_path
         self.jobs = {}
+        self._job_ids_by_path = {}
         self.worker = None
         self._batch_running = False
         self._batch_mesh_only = False
+
+    @staticmethod
+    def _normalize_path(step_path):
+        return os.path.normcase(os.path.abspath(step_path))
 
     def get_invalid_jobs(self):
         invalid_jobs = []
@@ -194,9 +199,11 @@ class JobManager(QObject):
 
     def add_job_from_path(self, step_path):
         path = os.path.abspath(step_path)
-        for job in self.jobs.values():
-            if os.path.abspath(job.step_path) == path:
-                return
+        normalized_path = self._normalize_path(path)
+        if normalized_path in self._job_ids_by_path:
+            return
+        if not os.path.exists(path):
+            return
 
         name = os.path.splitext(os.path.basename(path))[0]
         job_id = str(uuid.uuid4())[:8]
@@ -207,7 +214,30 @@ class JobManager(QObject):
             job.status_text = "Results Available"
 
         self.jobs[job_id] = job
+        self._job_ids_by_path[normalized_path] = job_id
         self.job_added.emit(job)
+
+    @Slot(list)
+    def sync_input_files(self, step_paths):
+        current_paths = set(self._job_ids_by_path)
+        desired_paths = {
+            self._normalize_path(path): os.path.abspath(path) for path in step_paths
+        }
+
+        removed_paths = current_paths - set(desired_paths)
+        added_paths = sorted(set(desired_paths) - current_paths, key=str.lower)
+
+        for normalized_path in removed_paths:
+            job_id = self._job_ids_by_path.get(normalized_path)
+            if job_id is None:
+                continue
+            job = self.jobs.pop(job_id, None)
+            self._job_ids_by_path.pop(normalized_path, None)
+            if job is not None:
+                self.job_removed.emit(job_id)
+
+        for normalized_path in added_paths:
+            self.add_job_from_path(desired_paths[normalized_path])
 
     def _has_existing_results(self, job_name):
         graph_path = os.path.join(self.result_dir, f"{job_name}_graph.png")
@@ -244,14 +274,10 @@ class JobManager(QObject):
                     pass
 
     def remove_job_by_path(self, step_path):
-        target_id = None
-        path = os.path.abspath(step_path)
-        for job_id, job in self.jobs.items():
-            if os.path.abspath(job.step_path) == path:
-                target_id = job_id
-                break
+        normalized_path = self._normalize_path(step_path)
+        target_id = self._job_ids_by_path.pop(normalized_path, None)
         if target_id:
-            del self.jobs[target_id]
+            self.jobs.pop(target_id, None)
             self.job_removed.emit(target_id)
 
     def start_batch(self, mesh_only=False):
