@@ -28,6 +28,7 @@ This software is licensed under the [GNU GPL v3](LICENSE).
 5.  **Output**: Simulation results (Graph PNG, CSV Data, Log) are saved in `results/`.
 
 ## Getting Started
+[![Watch the video](https://img.youtube.com/vi/VIDEO_ID/0.jpg)](https://www.youtube.com/watch?v=vNZM0MbpSeE)
 
 ### Prerequisites
 
