@@ -8,7 +8,8 @@ import meshio
 import gmsh
 import contextlib
 from scipy.spatial import cKDTree
-from typing import Tuple, List, Optional
+from typing import Tuple
+
 
 def rotate_about_canonical_y(points: np.ndarray, angle_deg: float) -> np.ndarray:
     """
@@ -27,6 +28,7 @@ def rotate_about_canonical_y(points: np.ndarray, angle_deg: float) -> np.ndarray
     pts[:, 2] = s * x + c * z
     return pts
 
+
 def permute_xyz(points: np.ndarray, new_from_old: Tuple[int, int, int]) -> np.ndarray:
     """
     Return a copy of points with axis permutation.
@@ -38,6 +40,7 @@ def permute_xyz(points: np.ndarray, new_from_old: Tuple[int, int, int]) -> np.nd
     """
     p = np.asarray(points)
     return p[:, list(new_from_old)].copy()
+
 
 def canonical_permutation_for_target_axis(target_axis: int) -> Tuple[int, int, int]:
     """
@@ -51,6 +54,7 @@ def canonical_permutation_for_target_axis(target_axis: int) -> Tuple[int, int, i
     if target_axis == 0:  # want axial along X => swap X<->Y
         return (1, 0, 2)
     raise ValueError("target_axis must be 0, 1, or 2.")
+
 
 def orient_quads_ccw(points2d: np.ndarray, quads: np.ndarray) -> np.ndarray:
     """Ensure quad node ordering is CCW in the 2D plane.
@@ -79,8 +83,11 @@ def orient_quads_ccw(points2d: np.ndarray, quads: np.ndarray) -> np.ndarray:
     if np.any(flip):
         q = q.copy()
         q[flip] = q[flip][:, [0, 3, 2, 1]]  # reverse winding
-        print(f"[orient] Flipped {int(np.count_nonzero(flip))}/{len(q)} quads to enforce CCW orientation.")
+        print(
+            f"[orient] Flipped {int(np.count_nonzero(flip))}/{len(q)} quads to enforce CCW orientation."
+        )
     return q
+
 
 def _hex6_volume(points: np.ndarray, hexes: np.ndarray) -> np.ndarray:
     """Return 6x signed volume based on one corner triple product.
@@ -97,6 +104,7 @@ def _hex6_volume(points: np.ndarray, hexes: np.ndarray) -> np.ndarray:
     e3 = pts[h[:, 4]] - p0
     return np.einsum("ij,ij->i", np.cross(e1, e2), e3)
 
+
 def _set_mesh_cells(mesh: fe.Mesh, cells_new: np.ndarray) -> None:
     """Assign cells back to a felupe mesh, tolerating different attribute semantics."""
     try:
@@ -110,6 +118,7 @@ def _set_mesh_cells(mesh: fe.Mesh, cells_new: np.ndarray) -> None:
     except Exception:
         pass
     raise RuntimeError("Failed to set mesh.cells on the given mesh object.")
+
 
 def fix_inverted_hexes_inplace(mesh: fe.Mesh, *, label: str = "") -> int:
     """Flip node ordering for Hex8 elements with negative signed volume.
@@ -133,7 +142,9 @@ def fix_inverted_hexes_inplace(mesh: fe.Mesh, *, label: str = "") -> int:
         return 0
 
     fixed = cells.copy()
-    fixed[inv] = fixed[inv][:, [0, 3, 2, 1, 4, 7, 6, 5]]  # parity flip (keeps vertical edges)
+    fixed[inv] = fixed[inv][
+        :, [0, 3, 2, 1, 4, 7, 6, 5]
+    ]  # parity flip (keeps vertical edges)
     # Verify
     vol6b = _hex6_volume(pts, fixed)
     still = int(np.count_nonzero(vol6b <= 0.0))
@@ -146,6 +157,7 @@ def fix_inverted_hexes_inplace(mesh: fe.Mesh, *, label: str = "") -> int:
     _set_mesh_cells(mesh, fixed)
     print(f"[invfix] {label}: fixed {n_bad} inverted hexes by flipping node ordering.")
     return n_bad
+
 
 def snap_interface_nodes_core_to_ring(
     mesh_core: fe.Mesh,
@@ -168,7 +180,9 @@ def snap_interface_nodes_core_to_ring(
     ring_ids = np.where(np.abs(rr - float(R_core)) < float(tol_r))[0]
 
     if len(core_ids) == 0 or len(ring_ids) == 0:
-        print(f"[snap] No interface nodes found (core={len(core_ids)}, ring={len(ring_ids)}). Skipping snap.")
+        print(
+            f"[snap] No interface nodes found (core={len(core_ids)}, ring={len(ring_ids)}). Skipping snap."
+        )
         return
 
     tree = cKDTree(pr[ring_ids])
@@ -177,13 +191,18 @@ def snap_interface_nodes_core_to_ring(
     ok = dists < float(tol_snap)
     snapped = int(np.count_nonzero(ok))
     if snapped == 0:
-        print(f"[snap] WARNING: 0 nodes snapped. Increase tol_snap (current {tol_snap}) or check alignment.")
+        print(
+            f"[snap] WARNING: 0 nodes snapped. Increase tol_snap (current {tol_snap}) or check alignment."
+        )
         return
 
     # Snap in-place
     pc[core_ids[ok]] = pr[ring_ids[nn[ok]]]
 
-    print(f"[snap] Snapped {snapped}/{len(core_ids)} core interface nodes onto ring interface nodes.")
+    print(
+        f"[snap] Snapped {snapped}/{len(core_ids)} core interface nodes onto ring interface nodes."
+    )
+
 
 def snap_interface_nodes_by_theta_layers(
     mesh_core: fe.Mesh,
@@ -208,7 +227,9 @@ def snap_interface_nodes_by_theta_layers(
     ring_ids = np.where(np.abs(rr - float(R_core)) < float(tol_r))[0]
 
     if len(core_ids) == 0 or len(ring_ids) == 0:
-        print(f"[snapL] No interface nodes found (core={len(core_ids)}, ring={len(ring_ids)}).")
+        print(
+            f"[snapL] No interface nodes found (core={len(core_ids)}, ring={len(ring_ids)})."
+        )
         return
 
     # Choose theta tolerance based on expected step size
@@ -248,8 +269,10 @@ def snap_interface_nodes_by_theta_layers(
     ring_layers = _theta_and_group(pr, ring_ids)
 
     if len(core_layers) != len(ring_layers):
-        print(f"[snapL] WARNING: theta-layer count mismatch (core={len(core_layers)}, ring={len(ring_layers)}). "
-              "Will snap by nearest theta.")
+        print(
+            f"[snapL] WARNING: theta-layer count mismatch (core={len(core_layers)}, ring={len(ring_layers)}). "
+            "Will snap by nearest theta."
+        )
     # Match layers by nearest theta (greedy), ensuring one-to-one
     ring_used = np.zeros(len(ring_layers), dtype=bool)
     snapped_total = 0
@@ -275,7 +298,10 @@ def snap_interface_nodes_by_theta_layers(
         pc[ids_c[:m]] = pr[ids_r[:m]]
         snapped_total += int(m)
 
-    print(f"[snapL] Snapped {snapped_total} core interface nodes onto ring nodes (layer-based).")
+    print(
+        f"[snapL] Snapped {snapped_total} core interface nodes onto ring nodes (layer-based)."
+    )
+
 
 def _snap_near_axis_points(mesh: fe.Mesh, tol: float) -> None:
     """Snap points very close to the rotation axis (canonical: Y axis) onto the axis."""
@@ -288,6 +314,7 @@ def _snap_near_axis_points(mesh: fe.Mesh, tol: float) -> None:
         pts[mask, 0] = 0.0
         pts[mask, 2] = 0.0
 
+
 def _count_degenerate_cells(cells: np.ndarray) -> int:
     """Return number of cells that reference duplicate vertex ids."""
     cells = np.asarray(cells)
@@ -299,10 +326,10 @@ def _count_degenerate_cells(cells: np.ndarray) -> int:
             deg += 1
     return deg
 
-def stitch_core_ring_conformal(mesh_core: fe.Mesh,
-                               mesh_ring_3d: fe.Mesh,
-                               R_core: float,
-                               tol_r: float) -> fe.Mesh:
+
+def stitch_core_ring_conformal(
+    mesh_core: fe.Mesh, mesh_ring_3d: fe.Mesh, R_core: float, tol_r: float
+) -> fe.Mesh:
     """Create a single conformal mesh by *index-stitching* the ring interface nodes onto the core interface nodes."""
     pc = np.asarray(mesh_core.points, dtype=float)
     pr = np.asarray(mesh_ring_3d.points, dtype=float)
@@ -315,7 +342,9 @@ def stitch_core_ring_conformal(mesh_core: fe.Mesh,
     ring_ids = np.where(np.abs(rr - float(R_core)) < float(tol_r))[0].astype(int)
 
     if len(core_ids) == 0 or len(ring_ids) == 0:
-        raise RuntimeError(f"[stitch] No interface nodes found (core={len(core_ids)}, ring={len(ring_ids)}).")
+        raise RuntimeError(
+            f"[stitch] No interface nodes found (core={len(core_ids)}, ring={len(ring_ids)})."
+        )
 
     # Build KDTree on core interface nodes and map each ring interface node to its nearest core node.
     tree = cKDTree(pc[core_ids])
@@ -329,10 +358,14 @@ def stitch_core_ring_conformal(mesh_core: fe.Mesh,
     if not np.all(ok):
         bad = int(np.sum(~ok))
         dmax = float(np.max(dist))
-        print(f"[stitch] WARNING: {bad}/{len(ok)} ring interface nodes did not match within tol_xyz={tol_xyz:g} (max d={dmax:g}).")
+        print(
+            f"[stitch] WARNING: {bad}/{len(ok)} ring interface nodes did not match within tol_xyz={tol_xyz:g} (max d={dmax:g})."
+        )
 
     # Mapping: ring_point_index -> core_point_index
-    ring_to_core = {int(ring_ids[i]): int(core_ids[nn[i]]) for i in range(len(ring_ids)) if ok[i]}
+    ring_to_core = {
+        int(ring_ids[i]): int(core_ids[nn[i]]) for i in range(len(ring_ids)) if ok[i]
+    }
 
     # Decide which ring points to keep (drop those that map to core)
     keep = np.ones(len(pr), dtype=bool)
@@ -366,13 +399,20 @@ def stitch_core_ring_conformal(mesh_core: fe.Mesh,
     if ct_core is None:
         raise RuntimeError("[stitch] mesh_core has no cell_type attribute.")
     if ct_ring is not None and ct_ring != ct_core:
-        raise RuntimeError(f"[stitch] Cell type mismatch: core={ct_core}, ring={ct_ring}")
+        raise RuntimeError(
+            f"[stitch] Cell type mismatch: core={ct_core}, ring={ct_ring}"
+        )
 
     merged = fe.Mesh(points, cells, ct_core)
-    print(f"[stitch] Stitched ring->core on {len(ring_to_core)} nodes; kept ring nodes={len(kept_ids)}.")
+    print(
+        f"[stitch] Stitched ring->core on {len(ring_to_core)} nodes; kept ring nodes={len(kept_ids)}."
+    )
     return merged
 
-def _merge_duplicate_points_with_backoff(mesh: fe.Mesh, start_decimals: int, max_decimals: int = 12) -> fe.Mesh:
+
+def _merge_duplicate_points_with_backoff(
+    mesh: fe.Mesh, start_decimals: int, max_decimals: int = 12
+) -> fe.Mesh:
     """Merge duplicate points, but back off if it creates degenerate cells."""
     start_decimals = int(start_decimals)
     for d in range(start_decimals, max_decimals + 1):
@@ -380,13 +420,22 @@ def _merge_duplicate_points_with_backoff(mesh: fe.Mesh, start_decimals: int, max
         deg = _count_degenerate_cells(m.cells)
         if deg == 0:
             if d != start_decimals:
-                print(f"[merge] Increased merge_decimals from {start_decimals} -> {d} to avoid degenerate cells.")
+                print(
+                    f"[merge] Increased merge_decimals from {start_decimals} -> {d} to avoid degenerate cells."
+                )
             return m
-        print(f"[merge] decimals={d} produced {deg} degenerate cells; trying finer rounding...")
-    print("[merge] WARNING: Could not merge points without degeneracy; keeping unmerged concatenated mesh.")
+        print(
+            f"[merge] decimals={d} produced {deg} degenerate cells; trying finer rounding..."
+        )
+    print(
+        "[merge] WARNING: Could not merge points without degeneracy; keeping unmerged concatenated mesh."
+    )
     return mesh
 
-def save_mesh_with_optional_quadratic(mesh: fe.Mesh, output_path: str, element_order: int) -> None:
+
+def save_mesh_with_optional_quadratic(
+    mesh: fe.Mesh, output_path: str, element_order: int
+) -> None:
     """
     Save mesh as VTK (primary) or MSH (interoperability).
     Higher-order mesh is generated via Gmsh if element_order > 1.
@@ -407,7 +456,7 @@ def save_mesh_with_optional_quadratic(mesh: fe.Mesh, output_path: str, element_o
         # Higher-order: Use Gmsh to elevate order
         base, _ = os.path.splitext(output_path)
         tmp_lin = base + "_tmp_lin.msh"
-        tmp_ho  = base + "_tmp_ho.msh"
+        tmp_ho = base + "_tmp_ho.msh"
 
         meshio.write(tmp_lin, meshio_mesh, file_format="gmsh22", binary=False)
         gmsh.initialize()

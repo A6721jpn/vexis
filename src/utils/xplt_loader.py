@@ -1,9 +1,21 @@
 import os
+import sys
 import threading
+from pathlib import Path
+
 import numpy as np
 import pyvista as pv
 
-from src.libs.waffleiron import xplt
+try:
+    from src.libs.waffleiron import xplt
+except ImportError:
+    fallback_repo_root = Path(__file__).resolve().parents[4]
+    fallback_libs_root = fallback_repo_root / "src" / "libs"
+    if fallback_libs_root.exists():
+        fallback_libs_root_str = str(fallback_libs_root)
+        if fallback_libs_root_str not in sys.path:
+            sys.path.insert(0, fallback_libs_root_str)
+    from waffleiron import xplt
 
 
 class WaffleironLoader:

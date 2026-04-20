@@ -4,23 +4,29 @@ import numpy as np
 import gmsh
 from scipy.interpolate import interp1d
 from dataclasses import dataclass
-from typing import Tuple, Sequence, List, Iterable, Callable, Optional
+from typing import Tuple, Sequence, List, Iterable, Callable
+
 
 @dataclass(frozen=True)
 class AxisInfo:
     """How the imported 2D profile is embedded in 3D coordinates."""
-    radial_dim: int   # coordinate in the profile plane representing radius R
-    axial_dim: int    # coordinate in the profile plane representing axial coordinate A (rotation axis direction)
-    normal_dim: int   # profile plane normal (should have ~zero thickness)
+
+    radial_dim: int  # coordinate in the profile plane representing radius R
+    axial_dim: int  # coordinate in the profile plane representing axial coordinate A (rotation axis direction)
+    normal_dim: int  # profile plane normal (should have ~zero thickness)
+
 
 @dataclass(frozen=True)
 class SplitResult:
-    ring_points_3d: np.ndarray           # (N,3) points used by the ring quad mesh
-    ring_quads: np.ndarray               # (M,4) quad connectivity (0-based indices into ring_points_3d)
+    ring_points_3d: np.ndarray  # (N,3) points used by the ring quad mesh
+    ring_quads: (
+        np.ndarray
+    )  # (M,4) quad connectivity (0-based indices into ring_points_3d)
     R_core: float
     axes: AxisInfo
     a_bot: Callable[[np.ndarray], np.ndarray]  # axial bottom surface function A_bot(R)
     a_top: Callable[[np.ndarray], np.ndarray]  # axial top surface function A_top(R)
+
 
 def _unique_sorted_xy(x, y, decimals: int = 12):
     """Sort by x and deduplicate near-equal x values by averaging y."""
@@ -42,6 +48,7 @@ def _unique_sorted_xy(x, y, decimals: int = 12):
     y_acc /= np.maximum(cnt, 1)
     return uniq.astype(float), y_acc.astype(float)
 
+
 def safe_interp1d(x, y):
     """interp1d wrapper that tolerates duplicate x values and avoids NaN at R≈0."""
     xu, yu = _unique_sorted_xy(x, y, decimals=12)
@@ -49,16 +56,25 @@ def safe_interp1d(x, y):
         return lambda r: np.zeros_like(np.asarray(r, dtype=float).reshape(-1))
     if len(xu) == 1:
         c = float(yu[0])
-        return lambda r: np.full_like(np.asarray(r, dtype=float).reshape(-1), c, dtype=float)
+        return lambda r: np.full_like(
+            np.asarray(r, dtype=float).reshape(-1), c, dtype=float
+        )
     f = interp1d(
-        xu, yu, kind="linear",
+        xu,
+        yu,
+        kind="linear",
         bounds_error=False,
         fill_value=(float(yu[0]), float(yu[-1])),
         assume_sorted=True,
     )
-    return lambda r: np.asarray(f(np.asarray(r, dtype=float).reshape(-1)), dtype=float).reshape(-1)
+    return lambda r: np.asarray(
+        f(np.asarray(r, dtype=float).reshape(-1)), dtype=float
+    ).reshape(-1)
 
-def _compute_global_bounds(entities: Sequence[Tuple[int, int]]) -> Tuple[np.ndarray, np.ndarray]:
+
+def _compute_global_bounds(
+    entities: Sequence[Tuple[int, int]],
+) -> Tuple[np.ndarray, np.ndarray]:
     """Return (mins, maxs) for x,y,z."""
     mins = np.array([+1e20, +1e20, +1e20], dtype=float)
     maxs = np.array([-1e20, -1e20, -1e20], dtype=float)
@@ -68,7 +84,10 @@ def _compute_global_bounds(entities: Sequence[Tuple[int, int]]) -> Tuple[np.ndar
         maxs = np.maximum(maxs, np.array(bb[3:], dtype=float))
     return mins, maxs
 
-def _detect_profile_axes(mins: np.ndarray, maxs: np.ndarray, revolve_axis: int, eps: float = 1e-6) -> AxisInfo:
+
+def _detect_profile_axes(
+    mins: np.ndarray, maxs: np.ndarray, revolve_axis: int, eps: float = 1e-6
+) -> AxisInfo:
     """Detect which coordinate is the profile plane normal, then derive radial/axial dims."""
     ranges = maxs - mins
     normal_dim = int(np.argmin(ranges))
@@ -94,8 +113,10 @@ def _detect_profile_axes(mins: np.ndarray, maxs: np.ndarray, revolve_axis: int, 
 
     return AxisInfo(radial_dim=radial_dim, axial_dim=axial_dim, normal_dim=normal_dim)
 
-def _split_surfaces_by_radius(surfaces_2d: Iterable[int], axes: AxisInfo, R_core: float, tol: float = 1e-5
-                             ) -> Tuple[List[int], List[int]]:
+
+def _split_surfaces_by_radius(
+    surfaces_2d: Iterable[int], axes: AxisInfo, R_core: float, tol: float = 1e-5
+) -> Tuple[List[int], List[int]]:
     """Classify 2D surfaces into outer (R>=R_core) and inner (R<=R_core)."""
     outer, inner = [], []
     rd = axes.radial_dim
@@ -113,10 +134,13 @@ def _split_surfaces_by_radius(surfaces_2d: Iterable[int], axes: AxisInfo, R_core
             (outer if com[rd] > R_core else inner).append(s_tag)
     return outer, inner
 
-def _extract_profile_a_of_R(inner_surfaces: Sequence[int], axes: AxisInfo, R_core: float) -> Tuple[interp1d, interp1d]:
+
+def _extract_profile_a_of_R(
+    inner_surfaces: Sequence[int], axes: AxisInfo, R_core: float
+) -> Tuple[interp1d, interp1d]:
     """
     Extract boundary curves for the inner region and build A_top(R), A_bot(R).
-    
+
     Returns interpolation functions A(R) where R is the positive radial distance.
     """
     rd, ad = axes.radial_dim, axes.axial_dim
@@ -124,7 +148,9 @@ def _extract_profile_a_of_R(inner_surfaces: Sequence[int], axes: AxisInfo, R_cor
     # Collect boundary curves of inner surfaces
     curve_tags: set[int] = set()
     for s_tag in inner_surfaces:
-        bnd = gmsh.model.getBoundary([(2, s_tag)], combined=False, oriented=False, recursive=False)
+        bnd = gmsh.model.getBoundary(
+            [(2, s_tag)], combined=False, oriented=False, recursive=False
+        )
         for dim, tag in bnd:
             if dim == 1:
                 curve_tags.add(tag)
@@ -136,7 +162,7 @@ def _extract_profile_a_of_R(inner_surfaces: Sequence[int], axes: AxisInfo, R_cor
     for c_tag in curve_tags:
         bb = gmsh.model.occ.getBoundingBox(1, c_tag)
         r0, r1 = bb[rd], bb[rd + 3]
-        
+
         # Check radius using absolute values (distance from axis)
         # Interface curve: R approx R_core
         if abs(abs(r0) - R_core) < 1e-4 and abs(abs(r1) - R_core) < 1e-4:
@@ -145,11 +171,13 @@ def _extract_profile_a_of_R(inner_surfaces: Sequence[int], axes: AxisInfo, R_cor
         if abs(r0) < 1e-4 and abs(r1) < 1e-4:
             axis_curve = c_tag
             continue
-            
+
         valid_curves.append(c_tag)
 
     if not valid_curves and axis_curve is None:
-        raise RuntimeError("Failed to extract inner profile curves (no valid boundary curves found).")
+        raise RuntimeError(
+            "Failed to extract inner profile curves (no valid boundary curves found)."
+        )
 
     samples: List[Tuple[float, float]] = []
 
@@ -157,7 +185,9 @@ def _extract_profile_a_of_R(inner_surfaces: Sequence[int], axes: AxisInfo, R_cor
         pmin, pmax = gmsh.model.getParametrizationBounds(1, c_tag)
         for i in range(n):
             t = pmin + (pmax - pmin) * i / (n - 1)
-            xyz = np.asarray(gmsh.model.getValue(1, c_tag, [float(t)]), dtype=float).reshape(-1)
+            xyz = np.asarray(
+                gmsh.model.getValue(1, c_tag, [float(t)]), dtype=float
+            ).reshape(-1)
             # Use abs() for radial coordinate to ensure we map R(distance) -> A(axial)
             samples.append((abs(float(xyz[rd])), float(xyz[ad])))
 
@@ -167,8 +197,12 @@ def _extract_profile_a_of_R(inner_surfaces: Sequence[int], axes: AxisInfo, R_cor
     if axis_curve is not None:
         # Add its endpoints to help interpolation at R=0
         pmin, pmax = gmsh.model.getParametrizationBounds(1, axis_curve)
-        xyz0 = np.asarray(gmsh.model.getValue(1, axis_curve, [float(pmin)]), dtype=float).reshape(-1)
-        xyz1 = np.asarray(gmsh.model.getValue(1, axis_curve, [float(pmax)]), dtype=float).reshape(-1)
+        xyz0 = np.asarray(
+            gmsh.model.getValue(1, axis_curve, [float(pmin)]), dtype=float
+        ).reshape(-1)
+        xyz1 = np.asarray(
+            gmsh.model.getValue(1, axis_curve, [float(pmax)]), dtype=float
+        ).reshape(-1)
         samples.append((0.0, float(xyz0[ad])))
         samples.append((0.0, float(xyz1[ad])))
 
@@ -188,8 +222,12 @@ def _extract_profile_a_of_R(inner_surfaces: Sequence[int], axes: AxisInfo, R_cor
         )
 
     # Debug output to verify classification
-    print(f"DEBUG: Top curves: {len(top)} points, A_mean={np.mean(top[:, 1]):.4f}, A_range=[{np.min(top[:, 1]):.4f}, {np.max(top[:, 1]):.4f}]")
-    print(f"DEBUG: Bot curves: {len(bot)} points, A_mean={np.mean(bot[:, 1]):.4f}, A_range=[{np.min(bot[:, 1]):.4f}, {np.max(bot[:, 1]):.4f}]")
+    print(
+        f"DEBUG: Top curves: {len(top)} points, A_mean={np.mean(top[:, 1]):.4f}, A_range=[{np.min(top[:, 1]):.4f}, {np.max(top[:, 1]):.4f}]"
+    )
+    print(
+        f"DEBUG: Bot curves: {len(bot)} points, A_mean={np.mean(bot[:, 1]):.4f}, A_range=[{np.min(bot[:, 1]):.4f}, {np.max(bot[:, 1]):.4f}]"
+    )
 
     top = top[np.argsort(top[:, 0])]
     bot = bot[np.argsort(bot[:, 0])]
@@ -211,6 +249,7 @@ def _extract_profile_a_of_R(inner_surfaces: Sequence[int], axes: AxisInfo, R_cor
 
     return a_bot, a_top
 
+
 # Need to import _mesh_outer_ring_quads from ring_mesh to use it in analyze_geometry_and_split?
 # No, analyze_geometry_and_split calls _mesh_outer_ring_quads.
 # To avoid circular imports, I should probably pass the meshing function or import it inside the function.
@@ -221,7 +260,10 @@ def _extract_profile_a_of_R(inner_surfaces: Sequence[int], axes: AxisInfo, R_cor
 # So analyze_geometry_and_split depends on ring_mesh.
 # I will import it inside the function to avoid circular dependency if ring_mesh needs AxisInfo from geometry.
 
-def analyze_geometry_and_split(stp_path: str, mesh_size: float, revolve_axis: int, core_ratio: float) -> SplitResult:
+
+def analyze_geometry_and_split(
+    stp_path: str, mesh_size: float, revolve_axis: int, core_ratio: float
+) -> SplitResult:
     """High-level wrapper around Gmsh: import -> split -> extract curves -> mesh outer ring."""
     # Import here to avoid circular dependency
     from .ring_mesh import mesh_outer_ring_quads
@@ -235,7 +277,7 @@ def analyze_geometry_and_split(stp_path: str, mesh_size: float, revolve_axis: in
     # Disable GUI/graphics to prevent Qt/FLTK initialization
     try:
         gmsh.option.setNumber("General.NoPopup", 1)
-    except:
+    except Exception:
         pass
     gmsh.model.add("adaptive_mesh_gen")
     try:
@@ -272,9 +314,13 @@ def analyze_geometry_and_split(stp_path: str, mesh_size: float, revolve_axis: in
 
         surfaces_2d = [tag for dim, tag in frag_out if dim == 2]
         if not surfaces_2d:
-            raise RuntimeError("No 2D surfaces found after fragment(). STEP may not define a 2D profile surface.")
+            raise RuntimeError(
+                "No 2D surfaces found after fragment(). STEP may not define a 2D profile surface."
+            )
 
-        outer_surfaces, inner_surfaces = _split_surfaces_by_radius(surfaces_2d, axes, R_core)
+        outer_surfaces, inner_surfaces = _split_surfaces_by_radius(
+            surfaces_2d, axes, R_core
+        )
         if not outer_surfaces:
             raise RuntimeError("Failed to identify outer ring surfaces after split.")
 

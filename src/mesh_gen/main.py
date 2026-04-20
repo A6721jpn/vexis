@@ -10,18 +10,19 @@ from .geometry import analyze_geometry_and_split
 from .core_mesh import create_quarter_ogrid_xz, extrude_core_to_3d
 from .utils import (
     rotate_about_canonical_y,
-    permute_xyz,
     canonical_permutation_for_target_axis,
     orient_quads_ccw,
     fix_inverted_hexes_inplace,
     snap_interface_nodes_by_theta_layers,
     stitch_core_ring_conformal,
     _snap_near_axis_points,
-    _merge_duplicate_points_with_backoff,
     save_mesh_with_optional_quadratic,
 )
 
-def generate_adaptive_mesh(config_path: str, stp_path: str, output_path: str | None = None) -> None:
+
+def generate_adaptive_mesh(
+    config_path: str, stp_path: str, output_path: str | None = None
+) -> None:
     cfg = MeshGenConfig.from_yaml(config_path)
 
     if output_path is None:
@@ -36,7 +37,9 @@ def generate_adaptive_mesh(config_path: str, stp_path: str, output_path: str | N
         core_ratio=cfg.ogrid_core_ratio,
     )
 
-    print(f"Detected axes: radial_dim={split.axes.radial_dim}, axial_dim={split.axes.axial_dim}, normal_dim={split.axes.normal_dim}")
+    print(
+        f"Detected axes: radial_dim={split.axes.radial_dim}, axial_dim={split.axes.axial_dim}, normal_dim={split.axes.normal_dim}"
+    )
     print(f"R_core={split.R_core:.6g}")
 
     # 2) Build 2D ring mesh in (R,A) coordinates (canonical: x=R, y=A) and revolve around canonical Y.
@@ -46,7 +49,9 @@ def generate_adaptive_mesh(config_path: str, stp_path: str, output_path: str | N
 
     ring_quads_ccw = orient_quads_ccw(ring_RA, split.ring_quads)
     mesh_ring_2d = fe.Mesh(ring_RA, ring_quads_ccw, "quad")
-    mesh_ring_3d = mesh_ring_2d.revolve(n=int(cfg.revolve_layers), phi=float(cfg.revolve_angle), axis=1)
+    mesh_ring_3d = mesh_ring_2d.revolve(
+        n=int(cfg.revolve_layers), phi=float(cfg.revolve_angle), axis=1
+    )
     # Ensure consistent element orientation (prevents local inversions after revolve)
     fix_inverted_hexes_inplace(mesh_ring_3d, label="ring_3d")
 
@@ -57,41 +62,45 @@ def generate_adaptive_mesh(config_path: str, stp_path: str, output_path: str | N
     ring_pts_3d = mesh_ring_3d.points
     r_ring_3d = np.hypot(ring_pts_3d[:, 0], ring_pts_3d[:, 2])  # R = sqrt(X^2 + Z^2)
     mask_boundary = np.abs(r_ring_3d - split.R_core) < tol
-    
+
     if np.count_nonzero(mask_boundary) < 2:
         raise RuntimeError(
             "Failed to locate interface nodes at R=R_core in ring_3d mesh. "
             f"(found {np.count_nonzero(mask_boundary)} nodes, tol={tol})"
         )
-    
+
     # Get unique Y values (axial) at the boundary
     y_boundary = ring_pts_3d[mask_boundary, 1]
     # Round to avoid float precision issues and get unique values
     # VEXIS FIX: Relaxed tolerance to 4 decimals (0.1um) to merge close layers (prevents ghost layers)
     y_unique = np.unique(np.round(y_boundary, decimals=4))
     a_interface = np.sort(y_unique)  # sorted axial coordinates
-    
+
     # VEXIS FIX: Filter out layers that are too close (ghost layers)
     if len(a_interface) > 1:
-        min_dist = max(1e-6, cfg.mesh_size * 0.05) # 5% of mesh size tolerance
+        min_dist = max(1e-6, cfg.mesh_size * 0.05)  # 5% of mesh size tolerance
         keep_mask = np.ones(len(a_interface), dtype=bool)
         last_val = a_interface[0]
         for i in range(1, len(a_interface)):
             if (a_interface[i] - last_val) < min_dist:
-                keep_mask[i] = False # Drop this layer (too close to previous)
+                keep_mask[i] = False  # Drop this layer (too close to previous)
             else:
                 last_val = a_interface[i]
-        
+
         n_dropped = len(a_interface) - np.count_nonzero(keep_mask)
         if n_dropped > 0:
-            print(f"Refined a_interface: dropped {n_dropped} ghost layers (min_dist={min_dist:.6f})")
+            print(
+                f"Refined a_interface: dropped {n_dropped} ghost layers (min_dist={min_dist:.6f})"
+            )
             a_interface = a_interface[keep_mask]
 
     print(f"Interface axial nodes: {len(a_interface)}")
 
     # 4) Generate structured core O-grid in the wedge and extrude with profile-based A-mapping.
     if abs(cfg.revolve_angle - 90.0) > 1e-6:
-        raise NotImplementedError("Structured core currently supports revolve_angle=90 only.")
+        raise NotImplementedError(
+            "Structured core currently supports revolve_angle=90 only."
+        )
     # NOTE: felupe.Mesh.revolve(n=...) appears to generate 'n' theta node layers (not n+1).
     # To make the core interface conformal, create (revolve_layers-1) theta divisions => revolve_layers layers.
     core_theta_divs = max(1, int(cfg.revolve_layers) - 1)
@@ -102,13 +111,13 @@ def generate_adaptive_mesh(config_path: str, stp_path: str, output_path: str | N
     A_bot_core = float(split.a_bot(np.array([split.R_core]))[0])
     A_top_core = float(split.a_top(np.array([split.R_core]))[0])
     H_ref = A_top_core - A_bot_core
-    
+
     # Default winding (CCW in XZ) produces Normal = -Y.
     # If H_ref > 0 (Extrusion +Y), we need Normal +Y to get Positive Volume.
     # Logic adjustment: It seems our previous assumption was reversed, or creating CW winding works better.
     # Let's try inverting the logic.
     flip_winding = not (H_ref > 0)
-    
+
     print(f"DEBUG: Core Height H_ref={H_ref:.6f}. Flip winding? {flip_winding}")
 
     # Determine n_radial
@@ -139,13 +148,14 @@ def generate_adaptive_mesh(config_path: str, stp_path: str, output_path: str | N
         a_top=split.a_top,
     )
 
-
     # --- Fix: core circumferential phase alignment ---
     # If the core appears rotated vs the ring by 90°, adjust this value.
     # Reverted to -90.0 as 0.0 caused misalignment.
-    core_theta_offset_deg = float(os.environ.get('CORE_THETA_OFFSET_DEG', '-90.0'))
+    core_theta_offset_deg = float(os.environ.get("CORE_THETA_OFFSET_DEG", "-90.0"))
     if abs(core_theta_offset_deg) > 1e-12:
-        mesh_core.points[:] = rotate_about_canonical_y(mesh_core.points, core_theta_offset_deg)
+        mesh_core.points[:] = rotate_about_canonical_y(
+            mesh_core.points, core_theta_offset_deg
+        )
     # Ensure consistent element orientation in core mesh
     fix_inverted_hexes_inplace(mesh_core, label="core_3d")
 
@@ -156,7 +166,7 @@ def generate_adaptive_mesh(config_path: str, stp_path: str, output_path: str | N
         R_core=split.R_core,
         revolve_angle_deg=cfg.revolve_angle,
         revolve_layers_hint=int(cfg.revolve_layers),
-        tol_r=max(1e-4, cfg.mesh_size*1e-3),
+        tol_r=max(1e-4, cfg.mesh_size * 1e-3),
     )
 
     # 5) Stitch meshes in canonical frame (axial=Y) without global point merging
@@ -180,13 +190,17 @@ def generate_adaptive_mesh(config_path: str, stp_path: str, output_path: str | N
     print(f"Final mesh: nodes={len(merged.points)}, elements={len(merged.cells)}")
 
     # 7) Save
-    save_mesh_with_optional_quadratic(merged, output_path, element_order=int(cfg.mesh_dimension))
-    
+    save_mesh_with_optional_quadratic(
+        merged, output_path, element_order=int(cfg.mesh_dimension)
+    )
+
     # 8) Also save .msh for interoperability/inspection
     msh_output = os.path.splitext(output_path)[0] + ".msh"
     if msh_output != output_path:
         print(f"Adding .msh version: {msh_output}")
-        save_mesh_with_optional_quadratic(merged, msh_output, element_order=int(cfg.mesh_dimension))
+        save_mesh_with_optional_quadratic(
+            merged, msh_output, element_order=int(cfg.mesh_dimension)
+        )
 
 
 if __name__ == "__main__":

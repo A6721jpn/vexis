@@ -2,9 +2,12 @@ from __future__ import annotations
 import math
 import numpy as np
 import felupe as fe
-from typing import Tuple, List, Callable, Optional
+from typing import Tuple, List, Callable
 
-def _enforce_outer_arc_nodes(points_xz: np.ndarray, nx: int, ny: int, R: float, phi_deg: float) -> None:
+
+def _enforce_outer_arc_nodes(
+    points_xz: np.ndarray, nx: int, ny: int, R: float, phi_deg: float
+) -> None:
     """
     Modify points_xz in-place so that the outer arc (r=R) nodes coincide with the same
     angular discretization used by felupe.Mesh.revolve, i.e. uniform theta spacing.
@@ -18,7 +21,9 @@ def _enforce_outer_arc_nodes(points_xz: np.ndarray, nx: int, ny: int, R: float, 
 
     # Node indexing: id = i + j*(nx+1)
     ids_u1 = [nx + j * (nx + 1) for j in range(ny + 1)]
-    ids_v1 = [i + ny * (nx + 1) for i in range(nx - 1, -1, -1)]  # exclude corner i=nx already in ids_u1
+    ids_v1 = [
+        i + ny * (nx + 1) for i in range(nx - 1, -1, -1)
+    ]  # exclude corner i=nx already in ids_u1
     boundary_ids = ids_u1 + ids_v1
 
     if len(boundary_ids) != len(thetas):
@@ -30,6 +35,7 @@ def _enforce_outer_arc_nodes(points_xz: np.ndarray, nx: int, ny: int, R: float, 
     for nid, th in zip(boundary_ids, thetas):
         points_xz[nid, 0] = float(R * np.cos(th))
         points_xz[nid, 1] = float(R * np.sin(th))
+
 
 def create_quarter_ogrid_xz(
     R: float,
@@ -54,10 +60,12 @@ def create_quarter_ogrid_xz(
     if total_segments < 1:
         # Degenerate: single quad (very low resolution); keep it robust.
         eps = max(1e-9, float(R) * 1e-9)
-        pts = np.asarray([[0.0, 0.0], [float(R), 0.0], [float(R), eps], [0.0, eps]], dtype=float)
+        pts = np.asarray(
+            [[0.0, 0.0], [float(R), 0.0], [float(R), eps], [0.0, eps]], dtype=float
+        )
         quads = np.asarray([[0, 1, 2, 3]], dtype=np.int64)
         if flip_winding:
-             quads = np.asarray([[0, 3, 2, 1]], dtype=np.int64)
+            quads = np.asarray([[0, 3, 2, 1]], dtype=np.int64)
         return pts, quads
 
     phi = math.radians(float(phi_deg))
@@ -87,7 +95,9 @@ def create_quarter_ogrid_xz(
     a_z = a_base * math.sqrt(tan_eff)
 
     # Fit strictly inside the circle (safety margin)
-    scale = min(0.98 * float(R) / max(a_x, 1e-12), 0.98 * float(R) / max(a_z, 1e-12), 1.0)
+    scale = min(
+        0.98 * float(R) / max(a_x, 1e-12), 0.98 * float(R) / max(a_z, 1e-12), 1.0
+    )
     a_x *= scale
     a_z *= scale
 
@@ -132,7 +142,12 @@ def create_quarter_ogrid_xz(
             T = np.array([x_top[i], a_z], dtype=float)
 
             P = (1 - t) * B + t * T + (1 - s) * L + s * Rb
-            P -= (1 - s) * (1 - t) * P00 + s * (1 - t) * P10 + (1 - s) * t * P01 + s * t * P11
+            P -= (
+                (1 - s) * (1 - t) * P00
+                + s * (1 - t) * P10
+                + (1 - s) * t * P01
+                + s * t * P11
+            )
 
             inner_pts[i + j * ncols, :] = P
 
@@ -180,7 +195,10 @@ def create_quarter_ogrid_xz(
 
     pts_list: List[List[float]] = inner_pts.tolist()
     for k, th in enumerate(thetas):
-        outer = np.array([float(R) * math.cos(float(th)), float(R) * math.sin(float(th))], dtype=float)
+        outer = np.array(
+            [float(R) * math.cos(float(th)), float(R) * math.sin(float(th))],
+            dtype=float,
+        )
         inner = inner_pts[int(outer_ids[k, 0])]
         for m in range(1, n_radial + 1):
             eta = _eta(m)
@@ -205,6 +223,7 @@ def create_quarter_ogrid_xz(
                 quads.append([n0, n1, n2, n3])
 
     return points, np.asarray(quads, dtype=np.int64)
+
 
 def extrude_core_to_3d(
     core_xz: np.ndarray,
@@ -244,13 +263,13 @@ def extrude_core_to_3d(
     # Identify boundary nodes (R ≈ R_core) that need revolve coordinate transformation
     tol_boundary = max(1e-6, float(R_core) * 0.01)
     is_boundary = np.abs(r_nodes - float(R_core)) < tol_boundary
-    
+
     # For boundary nodes, compute theta from current XZ coordinates
     # Ring uses revolve: (R, A) -> (R*cos(θ), A, R*sin(θ)) where θ ∈ [0, phi]
     # Core 2D is in XZ plane: X = R*cos(θ), Z = R*sin(θ) (but currently Z is just from 2D mesh)
     # We need to ensure boundary nodes have Z = R_core * sin(θ) where θ = atan2(Z, X)
     theta_boundary = np.arctan2(core_xz[is_boundary, 1], core_xz[is_boundary, 0])
-    
+
     # Create corrected 2D coordinates for boundary nodes
     core_xz_corrected = core_xz.copy()
     core_xz_corrected[is_boundary, 0] = float(R_core) * np.cos(theta_boundary)
@@ -259,7 +278,9 @@ def extrude_core_to_3d(
     points_layers: List[np.ndarray] = []
     for eta in etas:
         A_layer = A_bot_nodes + float(eta) * (A_top_nodes - A_bot_nodes)  # axial(Y)
-        pts = np.column_stack([core_xz_corrected[:, 0], A_layer, core_xz_corrected[:, 1]])  # (X, Y, Z)
+        pts = np.column_stack(
+            [core_xz_corrected[:, 0], A_layer, core_xz_corrected[:, 1]]
+        )  # (X, Y, Z)
         points_layers.append(pts)
 
     points3d = np.vstack(points_layers)
@@ -271,8 +292,17 @@ def extrude_core_to_3d(
         off1 = (k + 1) * n_layer_nodes
         for q in core_quads:
             n0, n1, n2, n3 = map(int, q)
-            hexes.append([off0 + n0, off0 + n1, off0 + n2, off0 + n3,
-                          off1 + n0, off1 + n1, off1 + n2, off1 + n3])
+            hexes.append(
+                [
+                    off0 + n0,
+                    off0 + n1,
+                    off0 + n2,
+                    off0 + n3,
+                    off1 + n0,
+                    off1 + n1,
+                    off1 + n2,
+                    off1 + n3,
+                ]
+            )
 
     return fe.Mesh(points3d, np.asarray(hexes, dtype=np.int64), "hexahedron")
-
