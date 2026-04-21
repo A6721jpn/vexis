@@ -8,12 +8,14 @@ PYVISTA_AVAILABLE = False
 pv = None
 QtInteractor = None
 
+
 def _ensure_pyvista():
     global PYVISTA_AVAILABLE, pv, QtInteractor
     if pv is None:
         try:
             import pyvista as _pv
             from pyvistaqt import QtInteractor as _QtInteractor
+
             pv = _pv
             QtInteractor = _QtInteractor
             PYVISTA_AVAILABLE = True
@@ -21,22 +23,27 @@ def _ensure_pyvista():
             PYVISTA_AVAILABLE = False
     return PYVISTA_AVAILABLE
 
+
 def _step_to_temp_mesh(step_path):
     """Convert STEP file to temporary VTK mesh for visualization using gmsh."""
+    gmsh = None
     try:
         import gmsh
+
         gmsh.initialize()
         gmsh.option.setNumber("General.Terminal", 0)  # Suppress output
         gmsh.model.add("preview")
         gmsh.model.occ.importShapes(step_path)
         gmsh.model.occ.synchronize()
-        
+
         # Fine mesh for smooth preview
         gmsh.option.setNumber("Mesh.MeshSizeMin", 0.1)
         gmsh.option.setNumber("Mesh.MeshSizeMax", 0.3)
-        gmsh.option.setNumber("Mesh.Algorithm", 6)  # Frontal-Delaunay for better quality
+        gmsh.option.setNumber(
+            "Mesh.Algorithm", 6
+        )  # Frontal-Delaunay for better quality
         gmsh.model.mesh.generate(2)  # Surface mesh only for speed
-        
+
         # Save to temp file
         temp_file = tempfile.NamedTemporaryFile(suffix=".vtk", delete=False)
         temp_path = temp_file.name
@@ -47,10 +54,12 @@ def _step_to_temp_mesh(step_path):
     except Exception as e:
         print(f"STEP preview generation error: {e}")
         try:
-            gmsh.finalize()
-        except:
+            if gmsh is not None:
+                gmsh.finalize()
+        except Exception:
             pass
         return None
+
 
 class MeshPreview(QWidget):
     def __init__(self):
@@ -59,7 +68,7 @@ class MeshPreview(QWidget):
         self._initialized = False
         self._temp_file = None
         self.layout = QVBoxLayout(self)
-        
+
         self.placeholder = QLabel("Geometry Preview\n(Select a job)")
         self.placeholder.setAlignment(Qt.AlignCenter)
         self.placeholder.setStyleSheet("background-color: #0B0F14; color: #6F8098;")
@@ -71,7 +80,7 @@ class MeshPreview(QWidget):
         if not _ensure_pyvista():
             self.placeholder.setText("pyvistaqt not installed")
             return
-        
+
         self._initialized = True
         self.placeholder.hide()
         self.plotter = QtInteractor(self)
@@ -82,32 +91,32 @@ class MeshPreview(QWidget):
     def load_mesh(self, vtk_path):
         """Load mesh file for preview."""
         self._cleanup_temp()
-        
+
         if not os.path.exists(vtk_path):
             self.placeholder.setText("Mesh not available")
             self.placeholder.show()
             if self.plotter:
                 self.plotter.hide()
             return
-            
+
         self._init_plotter()
         if not self.plotter:
             return
-        
+
         self.placeholder.hide()
         self.plotter.show()
 
         try:
             mesh = pv.read(vtk_path)
             self.plotter.clear()
-            
+
             # Surface without internal edges (fixes Hex20 diagonal line issue)
             self.plotter.add_mesh(mesh, show_edges=False, color="#64709e")
-            
+
             # Overlay true cell edges (not triangulated face diagonals)
             edges = mesh.extract_all_edges()
             self.plotter.add_mesh(edges, color="#333333", line_width=0.5)
-            
+
             self.plotter.reset_camera()
         except Exception as e:
             print(f"Mesh Preview Error: {e}")
@@ -115,54 +124,61 @@ class MeshPreview(QWidget):
     def load_step(self, step_path):
         """Load STEP file for geometry preview (converts to temp mesh)."""
         self._cleanup_temp()
-        
+
         if not os.path.exists(step_path):
             self.placeholder.setText("STEP file not found")
             self.placeholder.show()
             if self.plotter:
                 self.plotter.hide()
             return
-        
+
         # Show loading message
         self.placeholder.setText("Loading geometry...")
         self.placeholder.show()
         if self.plotter:
             self.plotter.hide()
-        
+
         # Convert STEP to temp mesh
         temp_path = _step_to_temp_mesh(step_path)
         if not temp_path:
             self.placeholder.setText("Failed to load STEP geometry")
             return
-        
+
         self._temp_file = temp_path
-        
+
         self._init_plotter()
         if not self.plotter:
             return
-        
+
         self.placeholder.hide()
         self.plotter.show()
 
         try:
             mesh = pv.read(temp_path)
             self.plotter.clear()
-            
+
             # Show surface without mesh lines
             self.plotter.add_mesh(mesh, show_edges=False, color="#5C7C99", opacity=1.0)
-            
+
             # Extract and show only feature edges (outer boundary and sharp edges)
             edges = mesh.extract_feature_edges(
-                boundary_edges=True, 
-                feature_edges=True, 
+                boundary_edges=True,
+                feature_edges=True,
                 manifold_edges=False,
                 non_manifold_edges=False,
-                feature_angle=30
+                feature_angle=30,
             )
-            self.plotter.add_mesh(edges, color="#2EE7FF", line_width=2, 
-                                  render_points_as_spheres=False, point_size=0)
-            
-            self.plotter.add_text("STEP Geometry", position='upper_left', font_size=10, color='white')
+            self.plotter.add_mesh(
+                edges,
+                color="#2EE7FF",
+                line_width=2,
+                render_points_as_spheres=False,
+                point_size=0,
+            )
+
+            self.plotter.add_text(
+                "STEP Geometry", position="upper_left", font_size=10, color="white"
+            )
             self.plotter.reset_camera()
         except Exception as e:
             print(f"STEP Preview Error: {e}")
@@ -173,7 +189,7 @@ class MeshPreview(QWidget):
         if self._temp_file and os.path.exists(self._temp_file):
             try:
                 os.remove(self._temp_file)
-            except:
+            except OSError:
                 pass
             self._temp_file = None
 
