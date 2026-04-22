@@ -1,38 +1,48 @@
 # VEXIS CAE
-![Force-Stroke Graph Example](doc/VEXIS-CAE-LOGO-LARGE_black.png)
+![VEXIS-CAE logo](doc/VEXIS-CAE-LOGO-LARGE_black.png)
 
-VEXIS CAE is an automated Finite Element Analysis (FEA) pipeline designed for large-deformation and buckling simulations of rubber dome, typically for membrane keyboard. It streamlines the workflow from raw CAD models (.step) to analyzed simulation results.
+VEXIS CAE is an automated Finite Element Analysis (FEA) pipeline for large-deformation and buckling simulations of rubber domes, typically for membrane keyboards. It covers the workflow from `.stp` / `.step` input through meshing, FEBio execution, and post-processing into `.xplt`, CSV, graph, and interactive 3D review.
+
+## Demo Video
+
+GitHub README does not support inline YouTube playback. Click the play card below to open the VEXIS how-to video on YouTube.
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=vNZM0MbpSeE">
+    <img src="doc/readme-demo-video-card.png" alt="Watch the VEXIS how-to video on YouTube" width="960">
+  </a>
+</p>
 
 This software is licensed under the [GNU GPL v3](LICENSE).
 
 ## Key Features
 
 - **Adaptive Mesh Generation**: Automatically creates high-quality hybrid meshes (Hex/Tet) from STEP files.
-- **Modern GUI**: A polished, dark-themed interface built with PySide6.
-    - **Live Preview**: Interactive 3D visualization of mesh and simulation results.
-    - **Real-time Monitoring**: Track solver progress and batch status visually.
-    - **Mesh-Only Mode**: Generate and preview meshes without running solver via "Gen Mesh" button.
-    - **Anti-Sleep**: Prevent PC sleep during long batch analyses with one-click toggle.
+- **Windows GUI Workflow**: A PySide6 desktop UI with input-folder monitoring, batch progress, live logs, solver status, and mesh/result preview.
+- **Interactive Results Review**: Loads `.xplt` results directly and provides force-displacement graphs plus 3D contour viewing with field switching for `displacement`, `Lagrange strain`, `stress`, and `velocity`.
+- **Mesh-Only Mode**: Use **Gen Mesh** to generate and preview a mesh without starting the FEBio solve.
+- **Keep Awake Toggle**: Prevent PC sleep during long-running analyses from the main toolbar.
 - **Robustness**:
     - **Crash Handler**: Catches and logs unexpected errors safely.
     - **Logging**: Automatic file logging to `logs/` directory for troubleshooting.
-- **FEBio Integration**: Seamlessly handles mesh swapping and solver execution.
-- **Result Extraction**: Generates Force-Displacement curves (`.csv`) and plots (`.png`).
+- **FEBio Integration**: Works with the bundled `solver/febio4.exe` when present, or an external FEBio installation via configuration.
+- **Packaged Windows Runtime**: The Windows distribution is built around `build_rust.py` and packaged as `VEXIS-CAE-Rust`.
 
 ## Core Workflow
 
-1.  **Input**: Place `.stp` or `.step` files in the `input/` directory (or drag & drop in GUI).
+1.  **Input**: Place `.stp` or `.step` files in the `input/` directory. The GUI watches this folder and registers jobs automatically.
 2.  **Meshing**: The system converts CAD geometry into a `.vtk` mesh optimized for stability.
-3.  **Preparation**: The new mesh is injected into a `template.feb` file with automatic reconstruction.
-4.  **Solver**: Executes the FEBio solver with real-time feedback.
-5.  **Output**: Simulation results (Graph PNG, CSV Data, Log) are saved in `results/`.
+3.  **Preparation**: The new mesh is injected into `template2.feb` with automatic contact and control reconstruction.
+4.  **Solver**: FEBio runs with real-time feedback in the GUI or CLI.
+5.  **Review**: The application loads `.xplt` output for 3D review and writes extracted CSV / graph artifacts into `results/`.
 
 ## Getting Started
 
 ### Prerequisites
 
 - Windows OS
-- [FEBio Studio](https://febio.org/) (FEBio4 solver installed and in PATH)
+- Python environment for source execution, or a packaged build for end users
+- [FEBio Studio](https://febio.org/) only if you want to use an external FEBio path; bundled `solver/febio4.exe` is used when available
 
 ### Quick Start (GUI)
 
@@ -40,16 +50,18 @@ This software is licensed under the [GNU GPL v3](LICENSE).
     ```bash
     python gui_main.py
     ```
-    *(Or launch the built `VEXIS-CAE.exe`)*
-2.  Place your CAD file (`.stp`) in the `input/` folder. It will appear in the job list automatically.
-3.  Click **Start Batch** to begin analysis.
-4.  Once complete, select the job to view the **Force-Stroke Graph** and **3D Results**.
+    *(Or launch the packaged `VEXIS-CAE-Rust.exe`)*
+2.  Place your CAD file in the `input/` folder. Use ASCII filenames such as `case_01.step` for reliable execution.
+3.  Use **Gen Mesh** for mesh preview only, or **Start Batch** for the full analysis workflow.
+4.  Once complete, select the job to inspect the force-displacement graph and 3D contour results.
 
 ### Quick Start (CLI)
 
 For headless automation:
 ```bash
 python main.py
+python main.py --mesh-only
+python main.py --skip-mesh
 ```
 
 ## Documentation
@@ -57,6 +69,7 @@ python main.py
 For more detailed information, please refer to the following documents:
 
 - [Workflow Guide (JA)](doc/workflow_guide_ja.md): Installation, data prep, and GUI reference.
+- [Development Guide (JA)](doc/Development_Guide.md): Code structure, workflow internals, and developer notes.
 - [Release Notes](doc/release_notes.md): Version history and changes.
 
 
