@@ -5,9 +5,13 @@ VEXIS CAE is an automated Finite Element Analysis (FEA) pipeline for large-defor
 
 ## Demo Video
 
-GitHub README does not support inline YouTube playback. Click the thumbnail below to open the demo on YouTube.
+GitHub README does not support inline YouTube playback. Click the play card below to open the VEXIS workflow demo on YouTube.
 
-[![Watch the demo video on YouTube](https://img.youtube.com/vi/vNZM0MbpSeE/hqdefault.jpg)](https://www.youtube.com/watch?v=vNZM0MbpSeE)
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=vNZM0MbpSeE">
+    <img src="doc/readme-demo-video-card.svg" alt="Watch the VEXIS workflow demo video on YouTube" width="960">
+  </a>
+</p>
 
 This software is licensed under the [GNU GPL v3](LICENSE).
 
