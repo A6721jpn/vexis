@@ -7,6 +7,8 @@ from PySide6 import QtSvg
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
 
+from src.version import VERSION
+
 _SVG_PLUGIN = QtSvg
 
 
@@ -80,7 +82,7 @@ def main():
     try:
         from ctypes import windll
 
-        myappid = "vexis_cae.gui.version.1.4.4"
+        myappid = f"vexis_cae.gui.version.{VERSION}"
         windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except ImportError:
         pass

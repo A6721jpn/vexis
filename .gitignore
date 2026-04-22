@@ -118,7 +118,12 @@ dist/
 pip-wheel-metadata/
 build.py
 *.spec
+!VEXIS-CAE-Rust.spec
 icon.ico
+src/libs/vexis_vulkan_core/target/
+
+# --- Local worktrees ---
+worktrees/*/
 
 # --- Test / coverage ---
 .pytest_cache/
