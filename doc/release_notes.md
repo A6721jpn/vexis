@@ -4,7 +4,39 @@
 
 ---
 
-## Version 1.4.4 (結果表示の高速化と表示品質改善) - Current
+## Version 1.6.0 (Rust/Vulkan 統合ブランチ) - In preparation
+**統合対象期間**: 2026-02-20 〜 2026-03-23  
+**このブランチでの位置づけ**:
+- `src/version.py` は `1.6.0` に更新し、Rust/Vulkan 系実装を main 系列へ統合するためのブランチとして扱います。
+- Rust/Vulkan 実装の最新ソース基準は 2026-03-23 時点の `worktrees/vexis-rust-vulkan` 系コミット群です。
+- 一方で、安定版リリースとしての最新は引き続き `v1.4.4` であり、`1.6.0` は検証と整理が完了するまで準備中の扱いです。
+
+**統合準備メモ**:
+- Rust コアの build artifact はローカル生成物として扱い、`src/libs/vexis_vulkan_core/target/` を ignore 対象にします。
+- `build_rust.py` はプロジェクト仮想環境の Python を優先して使い、`maturin` 実行・import 検証・PyInstaller 実行を同一 interpreter に揃えます。
+- GUI の AppUserModelID も `src/version.py` の版番号を参照するように変更し、Windows 側表示の版不整合を避けます。
+
+**作業ログ（時系列）**
+
+- **2026-02-20 / c9e2c3b**: 既存 3D コンター描画のボトルネックを測るため、`profiler.py` を追加。Vulkan 実装着手前に、どこへ最適化投資すべきかを定量化する準備を行いました。
+- **2026-02-20 / 86ac803**: Rust/Vulkan 版の初期実装を追加。`build_rust.py`、`src/libs/vexis_vulkan_core/`、`Cargo.toml`、PyO3 エントリポイント、初期 `parser.rs` / `renderer.rs` を導入し、Python GUI から Rust コアを呼び出す土台を整備しました。
+- **2026-02-21 / 718828f**: `.xplt` 読み込み系を Rust 側で高速化。`mmap` と再帰 TLV 解析を使う高性能パーサへ組み替え、巨大結果ファイルの読み込み効率を改善しました。
+- **2026-02-21 / e27870c**: Contour 描画経路を拡張。Rust 側 `renderer.rs` を大きく育て、Contour 表示用の描画ロジックと検証用出力を追加しました。
+- **2026-02-25 / 3dd9036**: Vulkan 描画をステートフル設計へ再編。`src/gui/panels/vulkan_widget.py` を新設し、`result_viewer.py` との責務分離を進めつつ、描画状態の再利用で表示性能を改善しました。
+- **2026-03-23 / ffe7856**: Rust/Vulkan ビューアの作業状態を保存した統合スナップショット。`result_viewer.py`、`vulkan_widget.py`、`build_rust.py`、`src/utils/xplt_loader.py` を更新し、GUI 側と Rust 側の接続状態を整理しました。
+- **2026-03-23 / c6f0f54**: Rust 側の `clippy` 指摘を反映。`parser.rs` / `renderer.rs` を中心に、所有権・条件分岐・データ処理を整理して保守性を改善しました。
+- **2026-03-23 / edcf4cc**: Python ランタイム側の lint / 構造整理を実施。`analysis_helpers.py`、`main.py`、`gui_main.py`、`src/gui/*`、`mesh_*` 系を横断的に整え、Rust/Vulkan 経路を既存アプリ構造に馴染ませました。
+- **2026-03-23 / 21ae5ba**: バッチ入力フォルダ同期まわりを改善。`file_watcher.py`、`job_manager.py`、`main_window.py` を調整し、入力監視とジョブ一覧の同期精度を上げました。
+
+**要点まとめ**
+- Rust 実装の中心は `src/libs/vexis_vulkan_core` で、役割は「高速 `.xplt` 解析」と「Vulkan ベースの結果表示」です。
+- GUI 側では `result_viewer.py` から責務を切り出す形で `vulkan_widget.py` が追加され、Python 側 UI と Rust 描画コアの境界が明確になりました。
+- `1.6.0` では、この開発トラックを main 系列へ統合しやすい形に整理し、既存 `v1.4.4` 系の安定性を崩さずに検証を進める方針です。
+
+---
+
+## Version 1.4.4 (結果表示の高速化と表示品質改善) - Latest stable release
+
 **開発日**: 2026-02-11
 結果表示の3Dビューを中心に、操作追従性・ロード速度・表示の正確性をまとめて改善しました。
 
