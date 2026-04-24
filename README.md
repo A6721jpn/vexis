@@ -1,3 +1,9 @@
+```text
+┏━[ ALERT ]━━━━━━━━━━━━━━━━━━━━━━┓
+┃  実験実装：取り扱い注意        ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+```
+
 # VEXIS CAE
 ![Force-Stroke Graph Example](doc/VEXIS-CAE-LOGO-LARGE_black.png)
 
