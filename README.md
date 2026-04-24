@@ -1,8 +1,13 @@
-```text
-┏━[ ALERT ]━━━━━━━━━━━━━━━━━━━━━━┓
-┃  実験実装：取り扱い注意        ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-```
+<table>
+  <tr>
+    <th align="center"><code>ALERT</code></th>
+  </tr>
+  <tr>
+    <td align="center">
+      <h1>実験実装：取り扱い注意</h1>
+    </td>
+  </tr>
+</table>
 
 # VEXIS CAE
 ![Force-Stroke Graph Example](doc/VEXIS-CAE-LOGO-LARGE_black.png)
