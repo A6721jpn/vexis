@@ -234,16 +234,22 @@ def run_solver_and_extract(feb_path, result_dir, log_path=None, num_threads=None
     if num_threads:
         env["OMP_NUM_THREADS"] = str(num_threads)
 
+    def _solver_config_path(exe_path):
+        exe_dir = os.path.dirname(os.path.abspath(exe_path))
+        candidate = os.path.join(exe_dir, "febio.xml")
+        return candidate if os.path.exists(candidate) else None
+
     # Priority list of solver candidates
     solver_candidates = []
     
-    # 1. Bundled solver (always try first)
-    bundled_path = os.path.join(BASE_DIR, "solver", "febio4.exe")
-    solver_candidates.append(bundled_path)
-    
-    # 2. Config path (passed via febio_exe argument from job_manager)
+    # 1. Explicit path from config / caller
     if febio_exe and febio_exe not in solver_candidates:
         solver_candidates.append(febio_exe)
+
+    # 2. Bundled solver
+    bundled_path = os.path.join(BASE_DIR, "solver", "febio4.exe")
+    if bundled_path not in solver_candidates:
+        solver_candidates.append(bundled_path)
         
     # 3. Environment variable
     if os.environ.get("FEBIO_PATH"):
@@ -294,7 +300,11 @@ def run_solver_and_extract(feb_path, result_dir, log_path=None, num_threads=None
             last_error_code = 0
             
             for current_exe in valid_candidates:
-                cmd = [current_exe, "-i", feb_path]
+                cmd = [current_exe]
+                config_path = _solver_config_path(current_exe)
+                if config_path:
+                    cmd.extend(["-config", config_path])
+                cmd.extend(["-i", feb_path])
                 
                 # Ensure current_exe's dir is in PATH for its own DLLs
                 exe_dir = os.path.dirname(os.path.abspath(current_exe))
@@ -304,6 +314,8 @@ def run_solver_and_extract(feb_path, result_dir, log_path=None, num_threads=None
 
                 f_global.write(f"DEBUG: Trying Solver = {current_exe}\n")
                 f_global.write(f"DEBUG: CMD = {cmd}\n")
+                if config_path:
+                    f_global.write(f"DEBUG: Config = {config_path}\n")
                 f_global.write(f"DEBUG: CWD (Temp) = {work_dir}\n")
                 f_global.flush()
 

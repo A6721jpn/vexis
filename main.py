@@ -76,25 +76,6 @@ def main():
                 # --- CONFIG & PATHS ---
                 material_yaml = MATERIAL_CONFIG
                 mesh_config_path = CONFIG_FILE
-                # --- CONFIG & PATHS ---
-                material_yaml = MATERIAL_CONFIG
-                mesh_config_path = CONFIG_FILE
-                
-                try:
-                    from src.config_loader import AnalysisConfig
-                    an_cfg = AnalysisConfig.from_yaml(CONFIG_FILE)
-                    
-                    push_dist = -1.0 * abs(an_cfg.total_stroke)
-                    sim_steps = an_cfg.time_steps
-                    mat_name = an_cfg.material_name
-                    num_threads = an_cfg.num_threads
-                    contact_penalty = an_cfg.contact_penalty
-                    template_feb = an_cfg.template_feb
-                    febio_path = an_cfg.febio_path if an_cfg.febio_path else None
-                except Exception as e:
-                    tqdm.write(f"\n! Configuration Error: {e}")
-                    # Stop workflow if config is invalid
-                    sys.exit(1)
 
                 # 1. Mesh Gen
                 vtk_path = os.path.join(TEMP_DIR, f"{name_no_ext}.vtk")
@@ -109,6 +90,22 @@ def main():
                 if args.mesh_only:
                     update_status(m="x", p="-", s="-")
                     continue
+
+                try:
+                    from src.config_loader import AnalysisConfig
+                    an_cfg = AnalysisConfig.from_yaml(CONFIG_FILE)
+
+                    push_dist = -1.0 * abs(an_cfg.total_stroke)
+                    sim_steps = an_cfg.time_steps
+                    mat_name = an_cfg.material_name
+                    num_threads = an_cfg.num_threads
+                    contact_penalty = an_cfg.contact_penalty
+                    template_feb = an_cfg.template_feb
+                    febio_path = an_cfg.febio_path if an_cfg.febio_path else None
+                except Exception as e:
+                    tqdm.write(f"\n! Configuration Error: {e}")
+                    # Stop workflow if config is invalid
+                    sys.exit(1)
 
                 # 2. FEBio Prep
                 feb_path = os.path.join(TEMP_DIR, f"{name_no_ext}.feb")

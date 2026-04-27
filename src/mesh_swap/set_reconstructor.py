@@ -335,7 +335,7 @@ class SetReconstructor:
                 target_surface = s
                 break
         
-        if not target_surface:
+        if target_surface is None:
             return None, None
             
         # Collect all unique nodes and faces

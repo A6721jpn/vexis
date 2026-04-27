@@ -100,15 +100,6 @@ class AnalysisConfig:
         if 0.0 >= cfg.contact_penalty or cfg.contact_penalty >= 20.0:
              raise ValueError(f"contact_penalty must be (0 < value < 20). Got {cfg.contact_penalty}")
 
-        # Strict File Checks if Paths are absolute or we are confident
-        # We can try checking. If it fails, user sees error. 
-        if cfg.febio_path and not os.path.exists(cfg.febio_path):
-             # Try checking if it's just a command like "febio4"
-             if not cfg.febio_path.endswith(".exe") and "/" not in cfg.febio_path and "\\" not in cfg.febio_path:
-                 pass # Might be PATH command
-             else:
-                 raise FileNotFoundError(f"febio_path not found: {cfg.febio_path}")
-
         if cfg.template_feb and not os.path.exists(cfg.template_feb):
              # This often fails if running test from wrong dir.
              # I will check if it exists relative to the config file?

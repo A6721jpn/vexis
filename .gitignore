@@ -172,3 +172,12 @@ feb_files.csv
 test/*.feb
 solver/
 
+# --- Local FEBio source-build workspace ---
+tools/deps/vcpkg/
+tools/febio/build/
+tools/febio/packages/
+tools/febio/source/
+tools/febio/nuget.exe
+
+# --- Local mesh engine comparison workspace ---
+mesh_engine_validation/
