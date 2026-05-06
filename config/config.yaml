@@ -19,7 +19,7 @@ mesh:
 
 analysis:
   # FEBio Solver Simulation Settings
-  febio_path: "C:/Program Files/FEBioStudio/bin/febio4.exe" # Fallback solver path (Use forward slashes for YAML)
+  febio_path: "solver/febio4" # Fallback solver path (relative to VEXIS root is supported)
   template_feb: "template2.feb"
   material_name: "Ogden_Rubber_v1" # Reference to material.yaml (From Remote)
   total_stroke: 1.0        # Total depression distance (mm). 

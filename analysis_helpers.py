@@ -2,7 +2,6 @@ import os, subprocess, sys, yaml
 import contextlib
 import felupe as fe
 import re
-import msvcrt
 import lxml.etree as ET
 import time
 from tqdm import tqdm
@@ -19,6 +18,28 @@ else:
 
 DEFAULT_TEMPLATE = os.path.join(BASE_DIR, "template2.feb")
 
+def _normalize_solver_path(path):
+    if not path:
+        return None
+    path = os.path.expanduser(os.path.expandvars(path))
+    if not os.path.isabs(path):
+        path = os.path.join(BASE_DIR, path)
+    return path
+
+def _bundled_solver_candidates():
+    names = ["febio4.exe"] if os.name == "nt" else ["febio4", "febio4.exe"]
+    return [os.path.join(BASE_DIR, "solver", name) for name in names]
+
+def _system_solver_candidates():
+    if os.name == "nt":
+        return [r"C:\Program Files\FEBioStudio\bin\febio4.exe"]
+    return [
+        "/Applications/FEBioStudio/bin/febio4",
+        "/Applications/FEBioStudio.app/Contents/MacOS/febio4",
+        "/usr/local/bin/febio4",
+        "/opt/homebrew/bin/febio4",
+    ]
+
 def get_solver_status():
     """
     Check solver availability and return status tuple.
@@ -27,32 +48,35 @@ def get_solver_status():
         - ("External", True) if external solver exists
         - ("Solver Not Found", False) if no solver found
     """
-    bundled_path = os.path.join(BASE_DIR, "solver", "febio4.exe")
-    if os.path.exists(bundled_path):
-        return ("Embedded", True)
-    
+    for bundled_path in _bundled_solver_candidates():
+        if os.path.exists(bundled_path):
+            return ("Embedded", True)
+
+    def _path_exists(path):
+        resolved = _normalize_solver_path(path)
+        return bool(resolved and os.path.exists(resolved))
+
     # Check config.yaml for febio_path
     config_path = os.path.join(BASE_DIR, "config", "config.yaml")
     if os.path.exists(config_path):
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
-            analysis = config.get("analysis", {})
+            analysis = config.get("analysis", {}) if config else {}
             febio_path = analysis.get("febio_path")
-            if febio_path and os.path.exists(febio_path):
+            if _path_exists(febio_path):
                 return ("External", True)
         except:
             pass
-    
+
     # Check environment variable
     env_path = os.environ.get("FEBIO_PATH")
-    if env_path and os.path.exists(env_path):
+    if _path_exists(env_path):
         return ("External", True)
-    
-    # Check default system path
-    system_path = r"C:\Program Files\FEBioStudio\bin\febio4.exe"
-    if os.path.exists(system_path):
-        return ("External", True)
+
+    for system_path in _system_solver_candidates():
+        if os.path.exists(system_path):
+            return ("External", True)
     
     return ("Solver Not Found", False)
 
@@ -247,9 +271,9 @@ def run_solver_and_extract(feb_path, result_dir, log_path=None, num_threads=None
         solver_candidates.append(febio_exe)
 
     # 2. Bundled solver
-    bundled_path = os.path.join(BASE_DIR, "solver", "febio4.exe")
-    if bundled_path not in solver_candidates:
-        solver_candidates.append(bundled_path)
+    for bundled_path in _bundled_solver_candidates():
+        if bundled_path not in solver_candidates:
+            solver_candidates.append(bundled_path)
         
     # 3. Environment variable
     if os.environ.get("FEBIO_PATH"):
@@ -258,17 +282,21 @@ def run_solver_and_extract(feb_path, result_dir, log_path=None, num_threads=None
             solver_candidates.append(env_path)
         
     # 4. Default System Path
-    system_path = r"C:\Program Files\FEBioStudio\bin\febio4.exe"
-    if system_path not in solver_candidates:
-        solver_candidates.append(system_path)
+    for system_path in _system_solver_candidates():
+        if system_path not in solver_candidates:
+            solver_candidates.append(system_path)
 
     # Filter out non-existent if they are just strings (except the last one as placeholder)
     # We keep the system_path even if it doesn't exist, as a last resort to try.
-    valid_candidates = [p for p in solver_candidates if os.path.exists(p)]
-    if not valid_candidates and os.path.exists(system_path): # If all others are gone, but system path exists
-        valid_candidates = [system_path]
-    elif not valid_candidates: # If nothing exists, just try the bundled path as a default
-        valid_candidates = [bundled_path]
+    resolved_candidates = []
+    for candidate in solver_candidates:
+        resolved = _normalize_solver_path(candidate)
+        if resolved:
+            resolved_candidates.append(resolved)
+
+    valid_candidates = [p for p in resolved_candidates if os.path.exists(p)]
+    if not valid_candidates: # If nothing exists, just try the bundled path as a default
+        valid_candidates = [_bundled_solver_candidates()[0]]
     
     # Ensure unique candidates and order
     valid_candidates = list(dict.fromkeys(valid_candidates))
@@ -584,4 +612,3 @@ def update_contact_penalty(tree, penalty_value):
         penalty_node = ET.SubElement(target_contact, "penalty")
     
     penalty_node.text = str(penalty_value)
-

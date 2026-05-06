@@ -418,7 +418,7 @@ class MainWindow(QMainWindow):
                 "Solver Not Found",
                 "FEBioソルバーが見つかりません。\n\n"
                 "以下のいずれかを確認してください：\n"
-                "・solver/febio4.exe が存在するか\n"
+                "・solver/febio4 または solver/febio4.exe が存在するか\n"
                 "・config.yaml の febio_path が正しいか\n"
                 "・FEBio Studio がインストールされているか"
             )

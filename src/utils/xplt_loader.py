@@ -1,7 +1,14 @@
-
 import numpy as np
 import pyvista as pv
 import os
+import sys
+from pathlib import Path
+
+LIBS_ROOT = Path(__file__).resolve().parents[2] / "src" / "libs"
+if LIBS_ROOT.exists():
+    libs_root_str = str(LIBS_ROOT)
+    if libs_root_str not in sys.path:
+        sys.path.insert(0, libs_root_str)
 
 from src.libs.waffleiron import xplt
 from src.libs.waffleiron import element

@@ -170,7 +170,9 @@ feb_files.csv
 !template.feb
 !template2.feb
 test/*.feb
-solver/
+solver/*
+!solver/.gitignore
+!solver/README.md
 
 # --- Local FEBio source-build workspace ---
 tools/deps/vcpkg/
