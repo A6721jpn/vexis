@@ -4,7 +4,29 @@
 
 ---
 
-## Version 1.4.3 (設定バリデーション強化とバグ修正) - Current
+## Version 1.7.0 (実験メッシュエンジン A/B 検証ブランチ) - Current
+**開発日**: 2026-05-08
+`main` ブランチの Version 1.6.0 とは別系統で、メッシュ生成の失敗要因を切り分けるための実験ブランチです。既存の本番メッシュ生成処理をすぐ置き換えるのではなく、ロバストメッシュ生成の候補実装を並走させ、警告数、収束率、処理時間を比較できる状態にしました。
+
+- **実験メッシュ生成:**
+    - **`src/mesh_gen_experimental` の追加**: OCC healing、外周リングの Quasi-structured Quad Meshing、Transfinite/Recombine を組み合わせた試作エンジンを追加。
+    - **singular node 診断の強化**: irregular vertex 警告の face/node 集計と bounding box 出力を追加し、どの領域でメッシュ品質が崩れているか追いやすくしました。
+    - **軸近傍の安定化**: radial layer 数と radial beta の扱いを axis-aware に補正し、軸付近セルの過密化と内側層の誤吸着を抑える方向で調整。
+    - **専用設定ファイルの追加**: `config/config_mesh_experimental.yaml` を追加し、`mesh_robust` セクションから OCC healing、メッシュ戦略、早期受理しきい値を切り替え可能にしました。
+
+- **既存メッシュ/差し替え処理の調整:**
+    - **メッシュ生成ロジックの整理**: `src/mesh_gen` 配下の core/ring/geometry/utils を見直し、実験結果と比較しやすい形に処理を整理。
+    - **メッシュ差し替えの安定化**: `src/mesh_swap` 配下の境界面、セット再構築、結果抽出処理を調整し、差し替え後の検証フローで落ちやすい箇所を補強。
+    - **設定読み込みの拡張**: `src/config_loader.py` と `main.py` を更新し、既存設定を保ちながら実験用の `mesh_robust` 設定を読めるようにしました。
+
+- **検証とドキュメント:**
+    - **回帰テストの追加**: `tests/test_refactor_regressions.py` を追加し、メッシュ差し替えまわりのリファクタリングで壊しやすい挙動を検出できるようにしました。
+    - **実験機能の注意書き追加**: `README.md` と `src/mesh_gen_experimental/README.md` に、本実装が本番メッシュ生成へ未接続の試作であること、A/B 比較後に本線へ反映する前提であることを明記。
+    - **Rust/Vulkan 系列との差分整理**: `main` の Rust/Vulkan 統合系列とは目的を分け、このブランチではメッシュ生成品質と差し替え検証に範囲を絞っています。
+
+---
+
+## Version 1.4.3 (設定バリデーション強化とバグ修正)
 **開発日**: 2026-01-22
 設定ファイルのバリデーション機能を大幅に強化し、不正な設定による予期せぬエラーを防止しました。
 
