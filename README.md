@@ -40,28 +40,58 @@ This software is licensed under the [GNU GPL v3](LICENSE).
 
 ## Getting Started
 
-### Prerequisites
+VEXIS can be run in two ways. Use the source route when developing or when you
+clone this repository directly. Use the packaged route when you want to launch a
+prebuilt Windows application.
+
+### Option A: Run from Source
+
+Use this route after cloning the repository.
+
+#### Prerequisites
 
 - Windows OS
+- Python 3.11 or newer
 - [FEBio Studio](https://febio.org/) (FEBio4 solver installed and in PATH)
 
-### Quick Start (GUI)
+#### Setup
 
-1.  Run the application:
-    ```bash
+```powershell
+git clone https://github.com/A6721jpn/vexis.git
+cd vexis
+
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+#### Run the GUI
+
+1.  Start the application:
+    ```powershell
     python gui_main.py
     ```
-    *(Or launch the built `VEXIS-CAE.exe`)*
 2.  Place your CAD file (`.stp`) in the `input/` folder. It will appear in the job list automatically.
 3.  Click **Start Batch** to begin analysis.
 4.  Once complete, select the job to view the **Force-Stroke Graph** and **3D Results**.
 
-### Quick Start (CLI)
+#### Run the CLI
 
 For headless automation:
-```bash
+```powershell
 python main.py
 ```
+
+### Option B: Run a Packaged App
+
+Use this route when you have a packaged VEXIS distribution such as
+`VEXIS-CAE.exe`. The package includes Python runtime components, so users do not
+need to install Python or project dependencies separately.
+
+1.  Download or receive the packaged `VEXIS-CAE` distribution.
+2.  Extract it to a writable folder.
+3.  Launch `VEXIS-CAE.exe`.
+4.  Place `.stp` or `.step` files in the packaged `input/` folder and run the workflow from the GUI.
 
 ## Documentation
 
