@@ -38,30 +38,79 @@ This software is licensed under the [GNU GPL v3](LICENSE).
 
 ## Getting Started
 
-### Prerequisites
+VEXIS can be run in two ways. Use the source route when developing or when you
+clone this repository directly. Use the packaged route when you want to launch a
+prebuilt Windows application.
+
+### Option A: Run from Source
+
+Use this route after cloning the repository. The Rust/Vulkan Python extension is
+not committed as a binary artifact; each developer builds it locally.
+
+#### Prerequisites
 
 - Windows OS
-- Python environment for source execution, or a packaged build for end users
+- Python 3.11 or newer
+- Rust toolchain from [rustup](https://rustup.rs/)
+- Vulkan-capable GPU and current graphics driver
 - [FEBio Studio](https://febio.org/) only if you want to use an external FEBio path; bundled `solver/febio4.exe` is used when available
 
-### Quick Start (GUI)
+#### Setup
 
-1.  Run the application:
-    ```bash
+```powershell
+git clone https://github.com/A6721jpn/vexis.git
+cd vexis
+
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+pip install maturin
+
+cd src\libs\vexis_vulkan_core
+python -m maturin develop --release
+cd ..\..\..
+```
+
+`src/libs/vexis_vulkan_core/target/` is intentionally not tracked in Git. It is
+generated locally by Cargo during the Rust build.
+
+#### Run the GUI
+
+1.  Start the application:
+    ```powershell
     python gui_main.py
     ```
-    *(Or launch the packaged `VEXIS-CAE-Rust.exe`)*
 2.  Place your CAD file in the `input/` folder. Use ASCII filenames such as `case_01.step` for reliable execution.
 3.  Use **Gen Mesh** for mesh preview only, or **Start Batch** for the full analysis workflow.
 4.  Once complete, select the job to inspect the force-displacement graph and 3D contour results.
 
-### Quick Start (CLI)
+#### Run the CLI
 
 For headless automation:
-```bash
+```powershell
 python main.py
 python main.py --mesh-only
 python main.py --skip-mesh
+```
+
+### Option B: Run a Packaged App
+
+Use this route when you have a packaged VEXIS distribution such as
+`VEXIS-CAE-Rust.exe`. The package includes Python runtime components and the
+compiled Rust extension, so users do not need to install Python, Rust, or
+`maturin` separately.
+
+1.  Download or receive the packaged `VEXIS-CAE-Rust` distribution.
+2.  Extract it to a writable folder.
+3.  Launch `VEXIS-CAE-Rust.exe`.
+4.  Place `.stp` or `.step` files in the packaged `input/` folder and run the workflow from the GUI.
+
+To build the packaged app yourself from source, use the same Python environment
+from Option A and run:
+
+```powershell
+pip install pyinstaller
+python build_rust.py
 ```
 
 ## Documentation
