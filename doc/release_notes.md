@@ -4,19 +4,41 @@
 
 ---
 
-## Version 1.6.0 (Rust/Vulkan 統合ブランチ) - In preparation
-**統合対象期間**: 2026-02-20 〜 2026-03-23  
-**このブランチでの位置づけ**:
-- `src/version.py` は `1.6.0` に更新し、Rust/Vulkan 系実装を main 系列へ統合するためのブランチとして扱います。
-- Rust/Vulkan 実装の最新ソース基準は 2026-03-23 時点の `worktrees/vexis-rust-vulkan` 系コミット群です。
-- 一方で、安定版リリースとしての最新は引き続き `v1.4.4` であり、`1.6.0` は検証と整理が完了するまで準備中の扱いです。
+## Version 1.6.0 (Rust/Vulkan 正式統合版) - Latest stable release
+**リリース日**: 2026-05-25
 
-**統合準備メモ**:
-- Rust コアの build artifact はローカル生成物として扱い、`src/libs/vexis_vulkan_core/target/` を ignore 対象にします。
-- `build_rust.py` はプロジェクト仮想環境の Python を優先して使い、`maturin` 実行・import 検証・PyInstaller 実行を同一 interpreter に揃えます。
-- GUI の AppUserModelID も `src/version.py` の版番号を参照するように変更し、Windows 側表示の版不整合を避けます。
+**統合対象期間**: 2026-02-20 〜 2026-03-23
 
-**作業ログ（時系列）**
+**前Version (1.4.4) との差分**
+
+v1.6.0 は、v1.4.4 までの Python/PyVista ベースの結果表示を土台に、Rust/Vulkan 系の高速化実装を正式版へ取り込んだリリースです。主な変更点は、`.xplt` 読み込み経路の Rust 化、Vulkan ベースの結果ビューア追加、Rust 拡張を含む Windows パッケージング手順の整備です。
+
+- **Rust/Vulkan コアの正式追加**
+    - `src/libs/vexis_vulkan_core` を追加し、PyO3 経由で Python GUI から Rust コアを呼び出せる構成にしました。
+    - Rust 側では `.xplt` 解析と Contour 描画用データ生成を担当し、既存 GUI から段階的に利用できる境界を用意しました。
+    - `src/libs/vexis_vulkan_core/target/` はローカル生成物として扱い、Git には含めない方針に整理しました。
+
+- **結果表示の高速化**
+    - `.xplt` 読み込みに `mmap` と再帰 TLV 解析を使う Rust パーサを導入しました。
+    - Contour 表示向けの描画データ処理を Rust 側へ寄せ、巨大な結果ファイルでも読み込みと表示更新の負荷を下げる設計にしました。
+    - 既存の v1.4.4 で入れたオンデマンド表示・全ステップ共通レンジ・節点平均表示の改善を維持しつつ、次の高速化経路を追加しています。
+
+- **Vulkan 結果ビューアの追加**
+    - `src/gui/panels/vulkan_widget.py` を追加し、結果表示パネルから Vulkan 描画経路を扱えるようにしました。
+    - 描画状態を再利用するステートフル設計へ移し、スライダー操作やフィールド切り替え時の再描画コストを抑える方向に整理しました。
+    - Python 側 UI と Rust/Vulkan 側の責務を分け、今後の描画最適化を入れやすくしました。
+
+- **ビルドと配布手順の更新**
+    - `build_rust.py` と `VEXIS-CAE-Rust.spec` を追加し、Rust 拡張のビルド、import 検証、PyInstaller パッケージングを同じ Python 環境で実行できるようにしました。
+    - README に、ソースから実行する場合と `VEXIS-CAE-Rust.exe` を使う場合の手順を分けて記載しました。
+    - Windows の AppUserModelID は `src/version.py` の版番号を参照する形に変更し、アプリ表示とリリース版番号のずれを避けています。
+
+- **GUI/ランタイムの整理**
+    - `analysis_helpers.py`、`main.py`、`gui_main.py`、`src/gui/*`、`mesh_*` 系の構造を整理しました。
+    - バッチ入力フォルダの監視とジョブ一覧の同期処理を改善し、入力ファイル追加時の状態反映を安定させました。
+    - `pytest.ini` を追加し、テスト実行の入口を明確にしました。
+
+**作業ログ（v1.4.4 以降の主なコミット）**
 
 - **2026-02-20 / c9e2c3b**: 既存 3D コンター描画のボトルネックを測るため、`profiler.py` を追加。Vulkan 実装着手前に、どこへ最適化投資すべきかを定量化する準備を行いました。
 - **2026-02-20 / 86ac803**: Rust/Vulkan 版の初期実装を追加。`build_rust.py`、`src/libs/vexis_vulkan_core/`、`Cargo.toml`、PyO3 エントリポイント、初期 `parser.rs` / `renderer.rs` を導入し、Python GUI から Rust コアを呼び出す土台を整備しました。
@@ -28,14 +50,14 @@
 - **2026-03-23 / edcf4cc**: Python ランタイム側の lint / 構造整理を実施。`analysis_helpers.py`、`main.py`、`gui_main.py`、`src/gui/*`、`mesh_*` 系を横断的に整え、Rust/Vulkan 経路を既存アプリ構造に馴染ませました。
 - **2026-03-23 / 21ae5ba**: バッチ入力フォルダ同期まわりを改善。`file_watcher.py`、`job_manager.py`、`main_window.py` を調整し、入力監視とジョブ一覧の同期精度を上げました。
 
-**要点まとめ**
-- Rust 実装の中心は `src/libs/vexis_vulkan_core` で、役割は「高速 `.xplt` 解析」と「Vulkan ベースの結果表示」です。
-- GUI 側では `result_viewer.py` から責務を切り出す形で `vulkan_widget.py` が追加され、Python 側 UI と Rust 描画コアの境界が明確になりました。
-- `1.6.0` では、この開発トラックを main 系列へ統合しやすい形に整理し、既存 `v1.4.4` 系の安定性を崩さずに検証を進める方針です。
+**リリース時の扱い**
+- `src/version.py` のアプリケーションバージョンは `1.6.0` です。
+- v1.6.0 から、Rust/Vulkan 実装を含む `VEXIS-CAE-Rust` 系を正式版として扱います。
+- Rust/Vulkan 拡張はソース管理上はビルド成果物を含めず、各環境で `maturin develop --release` または `build_rust.py` により生成します。
 
 ---
 
-## Version 1.4.4 (結果表示の高速化と表示品質改善) - Latest stable release
+## Version 1.4.4 (結果表示の高速化と表示品質改善)
 
 **開発日**: 2026-02-11
 結果表示の3Dビューを中心に、操作追従性・ロード速度・表示の正確性をまとめて改善しました。
