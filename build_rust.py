@@ -7,6 +7,37 @@ import time
 import stat
 import tempfile
 
+
+def resolve_tool_python(src_base_dir):
+    candidates = []
+
+    venv_root = os.environ.get("VIRTUAL_ENV")
+    if venv_root:
+        candidates.append(
+            os.path.join(
+                venv_root,
+                "Scripts" if os.name == "nt" else "bin",
+                "python.exe" if os.name == "nt" else "python",
+            )
+        )
+
+    candidates.append(
+        os.path.join(
+            src_base_dir,
+            ".venv",
+            "Scripts" if os.name == "nt" else "bin",
+            "python.exe" if os.name == "nt" else "python",
+        )
+    )
+    candidates.append(sys.executable)
+
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return os.path.abspath(candidate)
+
+    return sys.executable
+
+
 def copy_runtime_dir(src, dst, ignore=None, preserve_windows_runtime=False):
     if preserve_windows_runtime and os.name == "nt":
         os.makedirs(os.path.dirname(dst), exist_ok=True)
@@ -42,6 +73,9 @@ def build():
     print(f"  - Destination: {dist_dir}")
     if args.icon:
         print(f"  - Icon: {os.path.abspath(args.icon)}")
+
+    tool_python = resolve_tool_python(SRC_BASE_DIR)
+    print(f"  - Tool Python: {tool_python}")
 
     # 0. Clean previous build (Robust)
     def remove_readonly(func, path, _):
@@ -91,7 +125,7 @@ def build():
     env["PATH"] = r"C:\Users\aokuni\.cargo\bin;" + env.get("PATH", "")
     try:
         subprocess.run(
-            [sys.executable, "-m", "maturin", "develop", "--release"], 
+            [tool_python, "-m", "maturin", "develop", "--release"],
             cwd=rust_dir, env=env, check=True
         )
     except subprocess.CalledProcessError as e:
@@ -102,7 +136,7 @@ def build():
     print("Step 1b: Verifying Rust module import...")
     try:
         subprocess.run(
-            [sys.executable, "-c", "import vexis_vulkan_core; print('vexis_vulkan_core import ok')"],
+            [tool_python, "-c", "import vexis_vulkan_core; print('vexis_vulkan_core import ok')"],
             cwd=SRC_BASE_DIR,
             env=env,
             check=True,
@@ -114,7 +148,7 @@ def build():
     # 2. PyInstaller execution
     print("Step 2: Running PyInstaller...")
     cmd = [
-        sys.executable, "-m", "PyInstaller",
+        tool_python, "-m", "PyInstaller",
         "--noconfirm",
         "--distpath", pyinstaller_dist_parent,
         "--workpath", pyinstaller_work_path,
