@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 
 def test_mesh_swap_geometry_utils_reexports_shared_helpers():
     from src.mesh_swap import geometry_utils
@@ -21,6 +23,7 @@ def test_mesh_swap_geometry_utils_reexports_shared_helpers():
     assert missing == []
 
 
+@pytest.mark.filterwarnings("error::FutureWarning")
 def test_set_reconstructor_initializes_template_rubber_contact_sets():
     from src.mesh_swap.mesh_replacer import load_reference
     from src.mesh_swap.set_reconstructor import SetReconstructor
