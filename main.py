@@ -69,11 +69,13 @@ def main():
         "Mesh-Only" if args.mesh_only else "Skip-Mesh" if args.skip_mesh else "Full"
     )
 
-    try:
-        analysis_config = AnalysisConfig.from_yaml(CONFIG_FILE)
-    except Exception as error:
-        tqdm.write(f"\n! Configuration Error: {error}")
-        sys.exit(1)
+    analysis_config = None
+    if not args.mesh_only:
+        try:
+            analysis_config = AnalysisConfig.from_yaml(CONFIG_FILE)
+        except Exception as error:
+            tqdm.write(f"\n! Configuration Error: {error}")
+            sys.exit(1)
 
     try:
         from art import text2art
@@ -100,14 +102,6 @@ def main():
             update_status()
 
             try:
-                push_dist = -1.0 * abs(analysis_config.total_stroke)
-                sim_steps = analysis_config.time_steps
-                mat_name = analysis_config.material_name
-                num_threads = analysis_config.num_threads
-                contact_penalty = analysis_config.contact_penalty
-                template_feb = analysis_config.template_feb
-                febio_path = analysis_config.febio_path or None
-
                 vtk_path = os.path.join(TEMP_DIR, f"{name_no_ext}.vtk")
                 if args.skip_mesh:
                     if not os.path.exists(vtk_path):
@@ -122,6 +116,14 @@ def main():
                 if args.mesh_only:
                     update_status(m="x", p="-", s="-")
                     continue
+
+                push_dist = -1.0 * abs(analysis_config.total_stroke)
+                sim_steps = analysis_config.time_steps
+                mat_name = analysis_config.material_name
+                num_threads = analysis_config.num_threads
+                contact_penalty = analysis_config.contact_penalty
+                template_feb = analysis_config.template_feb
+                febio_path = analysis_config.febio_path or None
 
                 feb_path = os.path.join(TEMP_DIR, f"{name_no_ext}.feb")
                 helpers.run_integration(

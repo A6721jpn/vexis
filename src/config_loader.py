@@ -104,8 +104,4 @@ class AnalysisConfig:
                 f"contact_penalty must be (0 < value < 20). Got {cfg.contact_penalty}"
             )
 
-        if cfg.febio_path and not os.path.exists(cfg.febio_path):
-            if _looks_like_path(cfg.febio_path) or os.path.isabs(cfg.febio_path):
-                raise FileNotFoundError(f"febio_path not found: {cfg.febio_path}")
-
         return cfg

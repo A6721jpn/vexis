@@ -16,6 +16,7 @@ from .utils import (
     snap_interface_nodes_by_theta_layers,
     stitch_core_ring_conformal,
     _snap_near_axis_points,
+    maybe_save_inp_sidecar,
     save_mesh_with_optional_quadratic,
 )
 
@@ -192,6 +193,12 @@ def generate_adaptive_mesh(
     # 7) Save
     save_mesh_with_optional_quadratic(
         merged, output_path, element_order=int(cfg.mesh_dimension)
+    )
+    maybe_save_inp_sidecar(
+        merged,
+        output_path,
+        element_order=int(cfg.mesh_dimension),
+        output_format=cfg.output_format,
     )
 
     # 8) Also save .msh for interoperability/inspection

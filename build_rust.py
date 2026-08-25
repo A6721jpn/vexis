@@ -51,6 +51,19 @@ def copy_runtime_dir(src, dst, ignore=None, preserve_windows_runtime=False):
 
     shutil.copytree(src, dst, ignore=ignore)
 
+
+def copy_selected_files(src_base_dir, dist_dir, files):
+    for rel_path in files:
+        src = os.path.join(src_base_dir, rel_path)
+        dst = os.path.join(dist_dir, rel_path)
+        if not os.path.exists(src):
+            print(f"  - Warning: Source file {rel_path} not found.")
+            continue
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(src, dst)
+        print(f"  - Copied {rel_path}")
+
+
 def build():
     parser = argparse.ArgumentParser(description="Build automation for VEXIS-CAE EXE (with experimental Rust core)")
     parser.add_argument("-o", "--output", help="Optional exact output directory for the distribution")
@@ -181,13 +194,21 @@ def build():
     dirs_to_copy = [
         (solver_dir, "solver", shutil.ignore_patterns("out.txt")),
         (os.path.join(SRC_BASE_DIR, "config"), "config", None),
-        (os.path.join(SRC_BASE_DIR, "doc"), "doc", None),
         (os.path.join(SRC_BASE_DIR, "src", "icons"), os.path.join("src", "icons"), None),
         (os.path.join(SRC_BASE_DIR, "src", "gui", "styles"), os.path.join("src", "gui", "styles"), None),
     ]
 
     dirs_to_create = ["input", "results", "temp", "logs"]
     files_to_copy = ["template2.feb", "README.md", "LICENSE"]
+    doc_files_to_copy = [
+        os.path.join("doc", "workflow_guide_ja.md"),
+        os.path.join("doc", "LICENSES.html"),
+        os.path.join("doc", "VEXIS-CAE-LOGO-LARGE.png"),
+        os.path.join("doc", "VEXIS-CAE-LOGO-LARGE_black.png"),
+        os.path.join("doc", "VEXIS-CAE-LOGO-PLACEHOLDER.webp"),
+        os.path.join("doc", "VEXIS-CAE-LOGO-PLACEHOLDER.png"),
+        os.path.join("doc", "img", "gui_reference.png"),
+    ]
 
     for src, rel_dst, ignore in dirs_to_copy:
         dst = os.path.join(dist_dir, rel_dst)
@@ -215,6 +236,8 @@ def build():
             continue
         shutil.copy2(src, dst)
         print(f"  - Copied {f}")
+
+    copy_selected_files(SRC_BASE_DIR, dist_dir, doc_files_to_copy)
 
     print(f"\nBuild Completed successfully!")
     print(f"Distribution location: {dist_dir}")

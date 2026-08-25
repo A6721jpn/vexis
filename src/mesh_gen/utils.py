@@ -450,8 +450,13 @@ def save_mesh_with_optional_quadratic(
     if element_order == 1:
         # Linear (Hex8): Direct save via meshio
         # For .msh, use gmsh22 for better compatibility with target solvers
-        fmt = "gmsh22" if ext == ".msh" else None
-        meshio.write(output_path, meshio_mesh, file_format=fmt, binary=False)
+        if ext == ".inp":
+            meshio.write(
+                output_path, _as_abaqus_mesh(meshio_mesh), file_format="abaqus"
+            )
+        else:
+            fmt = "gmsh22" if ext == ".msh" else None
+            meshio.write(output_path, meshio_mesh, file_format=fmt, binary=False)
     else:
         # Higher-order: Use Gmsh to elevate order
         base, _ = os.path.splitext(output_path)
@@ -471,10 +476,40 @@ def save_mesh_with_optional_quadratic(
             shutil.move(tmp_ho, output_path)
         else:
             m = meshio.read(tmp_ho)
-            meshio.write(output_path, m, binary=False)
+            if ext == ".inp":
+                meshio.write(output_path, _as_abaqus_mesh(m), file_format="abaqus")
+            else:
+                meshio.write(output_path, m, binary=False)
 
         for p in (tmp_lin, tmp_ho):
             with contextlib.suppress(OSError):
                 os.remove(p)
 
     print(f"[OK] Mesh saved: {output_path} (Order {element_order})")
+
+
+def _as_abaqus_mesh(meshio_mesh: meshio.Mesh) -> meshio.Mesh:
+    """Return a meshio mesh restricted to Abaqus-supported solid hex types."""
+    cells = []
+    for block in meshio_mesh.cells:
+        if block.type == "hexahedron27":
+            cells.append(("hexahedron20", block.data[:, :20]))
+        else:
+            cells.append((block.type, block.data))
+    return meshio.Mesh(points=meshio_mesh.points, cells=cells)
+
+
+def maybe_save_inp_sidecar(
+    mesh: fe.Mesh, output_path: str, *, element_order: int, output_format: str
+) -> str | None:
+    """Write an Abaqus .inp next to the primary mesh when explicitly requested."""
+    if str(output_format).lower() != "inp":
+        return None
+
+    base, _ = os.path.splitext(output_path)
+    inp_output = base + ".inp"
+    if os.path.abspath(inp_output) == os.path.abspath(output_path):
+        return None
+
+    save_mesh_with_optional_quadratic(mesh, inp_output, element_order=element_order)
+    return inp_output

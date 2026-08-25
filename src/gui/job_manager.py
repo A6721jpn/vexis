@@ -57,14 +57,6 @@ class AnalysisWorker(QThread):
             return True
 
         try:
-            analysis_config = AnalysisConfig.from_yaml(self.config_path)
-            push_dist = -1.0 * abs(analysis_config.total_stroke)
-            sim_steps = analysis_config.time_steps
-            febio_path = analysis_config.febio_path or None
-            template_path = analysis_config.template_feb
-            material_name = analysis_config.material_name
-            num_threads = analysis_config.num_threads
-            contact_penalty = analysis_config.contact_penalty
             material_config_path = os.path.join(
                 os.path.dirname(self.config_path), "material.yaml"
             )
@@ -98,6 +90,15 @@ class AnalysisWorker(QThread):
                 self.progress_updated.emit(job_id, 100, "Mesh Generated")
                 self.finished.emit(job_id, True, "Mesh Generation Complete")
                 return
+
+            analysis_config = AnalysisConfig.from_yaml(self.config_path)
+            push_dist = -1.0 * abs(analysis_config.total_stroke)
+            sim_steps = analysis_config.time_steps
+            febio_path = analysis_config.febio_path or None
+            template_path = analysis_config.template_feb
+            material_name = analysis_config.material_name
+            num_threads = analysis_config.num_threads
+            contact_penalty = analysis_config.contact_penalty
 
             self.progress_updated.emit(job_id, 10, "Preparing FEBio model...")
             out_feb = os.path.join(self.temp_dir, f"{base_name}.feb")

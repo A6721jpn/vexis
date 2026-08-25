@@ -9,6 +9,9 @@ Thumbs.db
 # AI Agent settings (local only)
 .agent/
 
+# Local archive for obsolete/generated files kept out of Git.
+obsolute/
+
 #Under development
 plugins/
 !plugins/advanced_mesher/
@@ -98,6 +101,7 @@ paper/
 
 # --- Virtual environments ---
 .venv/
+.pdfenv/
 venv/
 ENV/
 env/
@@ -143,6 +147,9 @@ htmlcov/
 .ruff_cache/
 
 # --- Logs / temp ---
+logs/
+out/
+reports/
 *.log
 *.tmp
 *.swp
@@ -176,4 +183,14 @@ feb_files.csv
 !template2.feb
 test/*.feb
 solver/
+
+# --- Local FEBio source-build workspace ---
+tools/deps/vcpkg/
+tools/febio/build/
+tools/febio/packages/
+tools/febio/source/
+tools/febio/nuget.exe
+
+# --- Local mesh engine comparison workspace ---
+mesh_engine_validation/
 

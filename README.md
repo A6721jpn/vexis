@@ -1,68 +1,59 @@
 # VEXIS CAE
-![Force-Stroke Graph Example](doc/VEXIS-CAE-LOGO-LARGE_black.png)
+![VEXIS CAE Logo](doc/VEXIS-CAE-LOGO-LARGE_black.png)
 
-VEXIS CAE is an automated Finite Element Analysis (FEA) pipeline designed for large-deformation and buckling simulations of rubber dome, typically for membrane keyboard. It streamlines the workflow from raw CAD models (.step) to analyzed simulation results.
+VEXIS CAE is a specialized FEA workflow for rubber dome buckling analysis. It streamlines the entire process from STEP input to FEBio execution and force-stroke result review, making iterative evaluation faster and more repeatable.
 
-This software is licensed under the [GNU GPL v3](LICENSE).
+## Demo Video
 
-## Key Features
+[![Watch the demo video on YouTube](https://img.youtube.com/vi/vNZM0MbpSeE/hqdefault.jpg)](https://www.youtube.com/watch?v=vNZM0MbpSeE)
 
-- **Adaptive Mesh Generation**: Automatically creates high-quality hybrid meshes (Hex/Tet) from STEP files.
-- **Modern GUI**: A polished, dark-themed interface built with PySide6.
-    - **Live Preview**: Interactive 3D visualization of mesh and simulation results.
-    - **Real-time Monitoring**: Track solver progress and batch status visually.
-    - **Mesh-Only Mode**: Generate and preview meshes without running solver via "Gen Mesh" button.
-    - **Anti-Sleep**: Prevent PC sleep during long batch analyses with one-click toggle.
-- **Robustness**:
-    - **Crash Handler**: Catches and logs unexpected errors safely.
-    - **Logging**: Automatic file logging to `logs/` directory for troubleshooting.
-- **FEBio Integration**: Seamlessly handles mesh swapping and solver execution.
-- **Result Extraction**: Generates Force-Displacement curves (`.csv`) and plots (`.png`).
+## Quick Start
 
-## Core Workflow
+### Requirements
 
-1.  **Input**: Place `.stp` or `.step` files in the `input/` directory (or drag & drop in GUI).
-2.  **Meshing**: The system converts CAD geometry into a `.vtk` mesh optimized for stability.
-3.  **Preparation**: The new mesh is injected into a `template.feb` file with automatic reconstruction.
-4.  **Solver**: Executes the FEBio solver with real-time feedback.
-5.  **Output**: Simulation results (Graph PNG, CSV Data, Log) are saved in `results/`.
+- Windows
+- FEBio Studio / `febio4.exe`
+- Python environment with `requirements.txt`, or the packaged `VEXIS-CAE.exe`
 
-## Getting Started
+If FEBio is not available in `PATH`, set `analysis.febio_path` in `config/config.yaml`.
 
-### Prerequisites
+### Run from GUI
 
-- Windows OS
-- [FEBio Studio](https://febio.org/) (FEBio4 solver installed and in PATH)
+```bash
+pip install -r requirements.txt
+python gui_main.py
+```
 
-### Quick Start (GUI)
+Or launch the packaged `VEXIS-CAE.exe`.
 
-1.  Run the application:
-    ```bash
-    python gui_main.py
-    ```
-    *(Or launch the built `VEXIS-CAE.exe`)*
-2.  Place your CAD file (`.stp`) in the `input/` folder. It will appear in the job list automatically.
-3.  Click **Start Batch** to begin analysis.
-4.  Once complete, select the job to view the **Force-Stroke Graph** and **3D Results**.
+### Run from CLI
 
-### Quick Start (CLI)
-
-For headless automation:
 ```bash
 python main.py
+python main.py --mesh-only
+python main.py --skip-mesh
 ```
+
+### Basic Flow
+
+1. Place `.stp` or `.step` files in `input/`.
+2. Run the job from the GUI or CLI.
+3. Review graphs, CSV data, and logs in `results/`.
+
+## Main Folders
+
+- `input/`: STEP input files
+- `temp/`: generated mesh and intermediate FEBio files
+- `results/`: graphs, CSV data, and logs
+- `config/config.yaml`: solver path and analysis settings
 
 ## Documentation
 
-For more detailed information, please refer to the following documents:
+- [Workflow Guide (JA)](doc/workflow_guide_ja.md)
+- [Release Notes](doc/release_notes.md)
 
-- [Workflow Guide (JA)](doc/workflow_guide_ja.md): Installation, data prep, and GUI reference.
-- [Release Notes](doc/release_notes.md): Version history and changes.
+## License
 
-
-
-
----
-*Vexis is currently optimized for rubber keycap buckling analysis.*
+Licensed under the [GNU GPL v3](LICENSE).
 
 Copyright (c) 2024-2026 A.O.

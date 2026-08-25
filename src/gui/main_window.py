@@ -16,8 +16,8 @@ from PySide6.QtWidgets import (
     QToolBar,
     QMessageBox,
 )
-from PySide6.QtCore import Qt, QTimer, Slot
-from PySide6.QtGui import QAction, QPixmap
+from PySide6.QtCore import QSize, Qt, QTimer, Slot
+from PySide6.QtGui import QAction, QImageReader, QPixmap
 
 from src.gui.models.job_item import JobItem, JobStatus
 from src.gui.file_watcher import InputFolderWatcher
@@ -138,16 +138,9 @@ class MainWindow(QMainWindow):
         self.empty_panel = QLabel()
         self.empty_panel.setAlignment(Qt.AlignCenter)
         self.empty_panel.setStyleSheet("background-color: #0B0F14;")
+        self._empty_placeholder_has_pixmap = False
 
-        # Load logo for placeholder
-        logo_path = os.path.join(self.root_dir, "doc", "VEXIS-CAE-LOGO-LARGE.png")
-        if os.path.exists(logo_path):
-            logo_pix = QPixmap(logo_path).scaled(
-                400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation
-            )
-            self.empty_panel.setPixmap(logo_pix)
-        else:
-            self.empty_panel.setText("Select a job to preview")
+        self._load_empty_placeholder_logo()
 
         self.preview_stack.addWidget(self.empty_panel)
 
@@ -181,6 +174,41 @@ class MainWindow(QMainWindow):
 
         # Initial solver check
         self._update_solver_status()
+
+    def _load_empty_placeholder_logo(self):
+        logo_names = (
+            "VEXIS-CAE-LOGO-PLACEHOLDER.webp",
+            "VEXIS-CAE-LOGO-PLACEHOLDER.png",
+        )
+        for logo_name in logo_names:
+            logo_path = os.path.join(self.root_dir, "doc", logo_name)
+            if not os.path.exists(logo_path):
+                continue
+
+            reader = QImageReader(logo_path)
+            reader.setAutoTransform(True)
+
+            source_size = reader.size()
+            if source_size.isValid():
+                reader.setScaledSize(
+                    source_size.scaled(QSize(400, 400), Qt.KeepAspectRatio)
+                )
+
+            image = reader.read()
+            if not image.isNull():
+                self.empty_panel.setPixmap(QPixmap.fromImage(image))
+                self._empty_placeholder_has_pixmap = True
+                return
+
+        self.empty_panel.setText("Select a job to preview")
+
+    def _release_empty_placeholder_logo(self):
+        if not self._empty_placeholder_has_pixmap:
+            return
+
+        self.empty_panel.clear()
+        self.empty_panel.setText("Select a job to preview")
+        self._empty_placeholder_has_pixmap = False
 
     def _setup_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
@@ -417,6 +445,8 @@ class MainWindow(QMainWindow):
         if not job:
             self.preview_stack.setCurrentIndex(0)
             return
+
+        self._release_empty_placeholder_logo()
 
         # Priority 1: PENDING jobs always show STEP preview
         if job.status == JobStatus.PENDING:
